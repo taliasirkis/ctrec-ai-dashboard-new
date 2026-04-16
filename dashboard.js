@@ -13,6 +13,16 @@
     return s;
   }
 
+  const DEFAULT_FIELDS = {
+    name: 'Name',
+    description: 'Description',
+    status: 'Status',
+    priority: 'Priority',
+    impact: 'Impact',
+    org: 'Org',
+    isNew: 'New',
+  };
+
   function loadMergedConfig() {
     const base = Object.assign(
       {
@@ -21,26 +31,22 @@
         tableName: 'Initiatives',
         viewName: '',
         refreshMs: 5 * 60 * 1000,
-        fields: {
-          name: 'Name',
-          description: 'Description',
-          status: 'Status',
-          priority: 'Priority',
-          impact: 'Impact',
-          org: 'Org',
-          isNew: 'New',
-        },
+        fields: Object.assign({}, DEFAULT_FIELDS),
         orgSlugMap: {},
       },
       window.DASHBOARD_CONFIG || {}
     );
     let merged;
+    let saved = {};
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       merged = Object.assign({}, base, saved);
     } catch {
       merged = base;
+      saved = {};
     }
+    merged.fields = Object.assign({}, DEFAULT_FIELDS, base.fields || {}, saved.fields || {});
+    merged.orgSlugMap = Object.assign({}, base.orgSlugMap || {}, saved.orgSlugMap || {});
     merged.airtablePat = normalizeToken(merged.airtablePat);
     merged.baseId = String(merged.baseId || '').trim();
     merged.tableName = String(merged.tableName || '').trim() || 'Initiatives';
@@ -51,6 +57,12 @@
   function saveLocalConfig(patch) {
     const cur = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     const next = Object.assign({}, cur, patch);
+    if (patch.fields && typeof patch.fields === 'object') {
+      next.fields = Object.assign({}, cur.fields || {}, patch.fields);
+    }
+    if (patch.orgSlugMap && typeof patch.orgSlugMap === 'object') {
+      next.orgSlugMap = Object.assign({}, cur.orgSlugMap || {}, patch.orgSlugMap);
+    }
     if (next.airtablePat != null) next.airtablePat = normalizeToken(next.airtablePat);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -90,6 +102,18 @@
     if (tableEl) tableEl.value = c.tableName || '';
     if (viewEl) viewEl.value = c.viewName || '';
     if (patEl) patEl.value = '';
+    const f = c.fields || {};
+    const setF = (id, key) => {
+      const el = document.getElementById(id);
+      if (el) el.value = f[key] != null ? String(f[key]) : '';
+    };
+    setF('setup-f-name', 'name');
+    setF('setup-f-description', 'description');
+    setF('setup-f-status', 'status');
+    setF('setup-f-priority', 'priority');
+    setF('setup-f-impact', 'impact');
+    setF('setup-f-org', 'org');
+    setF('setup-f-isNew', 'isNew');
   }
 
   function cellValue(record, fieldName) {
@@ -413,7 +437,20 @@
       <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Table name</label>
       <input id="setup-table" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" />
       <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">View (optional)</label>
-      <input id="setup-view" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:16px;font-size:13px;" />
+      <input id="setup-view" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" />
+      <details style="margin-bottom:14px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+        <summary style="font-weight:600;cursor:pointer;font-size:13px;color:#334155;">Airtable column names (if you see “Untitled”, “Status TBD”, or one “unknown” org)</summary>
+        <p style="font-size:11px;color:#64748b;margin:10px 0 8px;line-height:1.45;">Each value must match a <strong>column name</strong> in your Airtable table exactly (same spelling and spaces as the grid header).</p>
+        <div style="display:grid;gap:8px;margin-top:8px;">
+          <label style="font-size:11px;font-weight:600;color:#475569;">Title / name <input id="setup-f-name" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Description <input id="setup-f-description" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Status <input id="setup-f-status" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Priority <input id="setup-f-priority" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Impact <input id="setup-f-impact" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Org / team <input id="setup-f-org" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">“New” flag (checkbox) <input id="setup-f-isNew" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+        </div>
+      </details>
       <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;">
         <button type="button" id="setup-clear" class="reset-btn" style="font-size:12px;">Clear saved connection…</button>
         <div style="display:flex;gap:10px;">
@@ -455,6 +492,16 @@
         }
         patch.airtablePat = pat;
       }
+      const gv = (id) => document.getElementById(id).value.trim();
+      patch.fields = {
+        name: gv('setup-f-name') || DEFAULT_FIELDS.name,
+        description: gv('setup-f-description') || DEFAULT_FIELDS.description,
+        status: gv('setup-f-status') || DEFAULT_FIELDS.status,
+        priority: gv('setup-f-priority') || DEFAULT_FIELDS.priority,
+        impact: gv('setup-f-impact') || DEFAULT_FIELDS.impact,
+        org: gv('setup-f-org') || DEFAULT_FIELDS.org,
+        isNew: gv('setup-f-isNew') || DEFAULT_FIELDS.isNew,
+      };
       saveLocalConfig(patch);
       const verify = loadMergedConfig();
       if (!verify.airtablePat || verify.airtablePat.length < 12) {
