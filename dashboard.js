@@ -3,12 +3,14 @@
 
   const STORAGE_KEY = 'airtable_dashboard_config_v1';
 
-  /** Trim + strip BOM / zero-width chars (common when pasting from Slack/email). */
+  /** Trim + strip BOM / zero-width chars; strip accidental leading "Bearer " so we do not double-prefix. */
   function normalizeToken(t) {
     if (t == null) return '';
     let s = String(t).trim().replace(/^\uFEFF/, '');
     s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
-    return s.trim();
+    s = s.trim().replace(/^["']|["']$/g, '');
+    s = s.replace(/^bearer\s+/i, '').trim();
+    return s;
   }
 
   function loadMergedConfig() {
