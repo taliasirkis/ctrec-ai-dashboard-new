@@ -508,6 +508,20 @@
     refreshTimer = setInterval(refresh, ms);
   }
 
+  function loadTokenExampleDoc() {
+    const el = document.getElementById('token-help-panel');
+    if (!el) return;
+    fetch('token.example.txt', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((text) => {
+        el.textContent = text;
+      })
+      .catch(() => {
+        el.textContent =
+          '# How to use a local token file (optional)\n#\n# (Could not load token.example.txt from this site.)\n# It should live next to index.html on GitHub Pages.';
+      });
+  }
+
   function injectSetupModal() {
     if (document.getElementById('setup-overlay')) return;
     const overlay = document.createElement('div');
@@ -515,21 +529,21 @@
     overlay.className = 'hidden';
     overlay.style.cssText =
       'position:fixed;inset:0;background:rgba(15,23,42,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
-    overlay.innerHTML = `<div style="background:white;border-radius:14px;max-width:520px;width:100%;max-height:min(92vh,900px);overflow-y:auto;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
-      <h2 style="font-size:18px;margin-bottom:6px;color:#0f172a;">Airtable connection</h2>
-      <p style="font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.5;">Values are stored only in this browser (localStorage). For a public GitHub repo, do not commit tokens in <code>config.js</code>.</p>
-      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Personal Access Token</label>
-      <p style="font-size:11px;color:#64748b;margin:-4px 0 6px;line-height:1.4;">Shown as plain text so the browser does not block saving long tokens. Paste the full <code>pat…</code> secret. Leave blank and save to keep an existing token when only changing base/table.</p>
+    overlay.innerHTML = `<div class="setup-card-doc" style="background:#fafafa;border:1px solid #d0d7de;border-radius:10px;max-width:520px;width:100%;max-height:min(92vh,900px);overflow-y:auto;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.2);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">
+      <h2 style="font-size:14px;margin-bottom:4px;color:#24292f;font-weight:700;letter-spacing:0.02em;"># Airtable connection</h2>
+      <p class="setup-note" style="margin-bottom:14px;"># Values are stored only in this browser (localStorage). For a public GitHub repo, do not commit tokens in config.js</p>
+      <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Personal Access Token</label>
+      <p class="setup-note" style="margin:-2px 0 6px;"># Plain text field — paste full pat… secret. Leave blank + save to keep existing token when editing base/table only.</p>
       <input id="setup-pat" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;" placeholder="pat… (paste full token)" />
-      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Base ID</label>
+      <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Base ID</label>
       <input id="setup-base" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" placeholder="appXXXXXXXXXXXXXX" />
-      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Table name</label>
+      <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Table name</label>
       <input id="setup-table" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" />
-      <div style="margin-bottom:14px;padding:12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;">
-        <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px;">Airtable column names</h3>
-        <p style="font-size:11px;color:#64748b;margin:0 0 8px;line-height:1.45;">If cards show <strong>Untitled</strong> or <strong>Status TBD</strong>, type each <strong>grid header</strong> from your Airtable table exactly (spelling and spaces). Leave a row blank to use the default in parentheses.</p>
+      <div style="margin-bottom:14px;padding:12px;background:#fff;border:1px solid #d0d7de;border-radius:8px;">
+        <h3 style="font-size:12px;font-weight:700;color:#24292f;margin:0 0 6px;letter-spacing:0.03em;"># Airtable column names</h3>
+        <p class="setup-note" style="margin:0 0 8px;"># If cards show Untitled / Status TBD: type each grid header from Airtable exactly. Blank row = use default in parentheses.</p>
         <button type="button" id="setup-autodetect" class="reset-btn" style="margin-bottom:10px;font-size:12px;font-weight:600;">Auto-detect from Airtable</button>
-        <p style="font-size:10px;color:#64748b;margin:-4px 0 8px;line-height:1.4;">Uses your token + base + table (+ view if set) to read a few rows and guess column names. Check the fields, then <strong>Save &amp; load</strong>.</p>
+        <p class="setup-note" style="margin:-4px 0 8px;font-size:10px;"># Auto-detect: uses token + base + table (+ view) to sample rows. Review fields, then Save &amp; load.</p>
         <div style="display:grid;gap:8px;">
           <label style="font-size:11px;font-weight:600;color:#475569;">Title / name <span style="font-weight:400;color:#94a3b8">(default: Name)</span><input id="setup-f-name" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
           <label style="font-size:11px;font-weight:600;color:#475569;">Description <span style="font-weight:400;color:#94a3b8">(Description)</span><input id="setup-f-description" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
@@ -540,7 +554,7 @@
           <label style="font-size:11px;font-weight:600;color:#475569;">New flag (checkbox) <span style="font-weight:400;color:#94a3b8">(New)</span><input id="setup-f-isNew" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
         </div>
       </div>
-      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">View (optional)</label>
+      <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">View (optional)</label>
       <input id="setup-view" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" />
       <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;">
         <button type="button" id="setup-clear" class="reset-btn" style="font-size:12px;">Clear saved connection…</button>
@@ -724,6 +738,7 @@
   };
 
   function init() {
+    loadTokenExampleDoc();
     injectSetupModal();
     const cfg = loadMergedConfig();
     if (!cfg.airtablePat || !cfg.baseId) {

@@ -90,11 +90,51 @@
   .dot-mle { background: #ec4899; }
   .dot-research { background: #f97316; }
 
+  /* Plain-text / token.example.txt style help */
+  .doc-footer { margin: 28px 32px 48px; max-width: 920px; }
+  .doc-filename {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: #57606a;
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+  }
+  .setup-note {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    color: #57606a;
+    line-height: 1.45;
+  }
+  .setup-card-doc input[type="text"],
+  .setup-card-doc input[type="password"] {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    background: #fff;
+    color: #24292f;
+  }
+
+  .txt-doc {
+    margin: 0;
+    padding: 16px 18px;
+    background: #fafafa;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #24292f;
+    white-space: pre-wrap;
+    word-break: break-word;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+  }
+
   @media (max-width: 768px) {
     .header, .summary-bar, .controls, .main { padding-left: 16px; padding-right: 16px; }
     .cards-grid { grid-template-columns: 1fr; }
     .stat-card { min-width: 100px; }
     .update-banner ul { columns: 1; }
+    .doc-footer { margin-left: 16px; margin-right: 16px; }
   }
 </style>
 </head>
@@ -193,6 +233,11 @@
   </div>
 </div>
 
+<footer class="doc-footer" aria-label="Token file instructions">
+  <div class="doc-filename">token.example.txt</div>
+  <pre id="token-help-panel" class="txt-doc"># Loading…</pre>
+</footer>
+
 <script>
 window.DASHBOARD_CONFIG = Object.assign(
   {
@@ -227,7 +272,7 @@ window.DASHBOARD_CONFIG = Object.assign(
 );
 </script>
 <script src="config.js"></script>
-<script src="dashboard.js?v=13"></script>
+<script src="dashboard.js?v=14"></script>
 
 </body>
 </html>
