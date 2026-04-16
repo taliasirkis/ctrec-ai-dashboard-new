@@ -241,6 +241,95 @@
     return rows;
   }
 
+  async function fetchSampleRecords(cfg, maxRecords) {
+    const table = encodeURIComponent(cfg.tableName.trim());
+    const base = cfg.baseId.trim();
+    const n = Math.min(Math.max(1, maxRecords || 8), 30);
+    let url = `https://api.airtable.com/v0/${base}/${table}?maxRecords=${n}`;
+    if (cfg.viewName) url += `&view=${encodeURIComponent(cfg.viewName)}`;
+    const token = normalizeToken(cfg.airtablePat);
+    if (!token) throw new Error('Missing token');
+    const res = await fetch(url, { method: 'GET', mode: 'cors', headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(t || res.statusText || String(res.status));
+    }
+    const data = await res.json();
+    return data.records || [];
+  }
+
+  function collectFieldKeys(records) {
+    const s = new Set();
+    records.forEach((r) => {
+      Object.keys(r.fields || {}).forEach((k) => s.add(k));
+    });
+    return [...s];
+  }
+
+  function pickKey(keys, patterns) {
+    for (const re of patterns) {
+      const hit = keys.find((k) => re.test(k));
+      if (hit) return hit;
+    }
+    return '';
+  }
+
+  /** Best-effort map from real Airtable field names (keys in API). */
+  function guessFieldMappingFromRecords(records) {
+    if (!records.length) return null;
+    const keys = collectFieldKeys(records);
+    if (!keys.length) return null;
+    const sample = records[0];
+
+    const name =
+      pickKey(keys, [/^name$/i, /^title$/i, /^initiative$/i, /initiative\s*name/i, /^program$/i, /^project$/i]) ||
+      keys.find((k) => {
+        const v = sample.fields[k];
+        return typeof v === 'string' && v.length > 0 && v.length < 200 && String(v).indexOf('\n') === -1;
+      }) ||
+      keys[0];
+
+    const description =
+      pickKey(keys, [/^description$/i, /^details$/i, /^summary$/i, /^notes$/i, /overview/i, /narrative/i]) ||
+      (() => {
+        let best = '';
+        let len = 0;
+        keys.forEach((k) => {
+          if (k === name) return;
+          const v = sample.fields[k];
+          if (typeof v === 'string' && v.length > len) {
+            len = v.length;
+            best = k;
+          }
+        });
+        return len > 60 ? best : '';
+      })();
+
+    const status = pickKey(keys, [/^status$/i, /^phase$/i, /^state$/i, /workflow/i, /stage$/i]);
+    const priority = pickKey(keys, [/^priority$/i, /^prio$/i]);
+    const impact = pickKey(keys, [/^impact$/i, /^severity$/i]);
+    const org = pickKey(keys, [/^org$/i, /^team$/i, /owning/i, /business\s*unit/i, /^pillar$/i, /division/i]);
+
+    let isNew = pickKey(keys, [/^new$/i, /^is\s*new$/i, /new\s*initiative/i]);
+    if (!isNew) {
+      const boolKey = keys.find((k) => {
+        const v = sample.fields[k];
+        return v === true || v === false;
+      });
+      if (boolKey) isNew = boolKey;
+    }
+
+    return {
+      name: name || DEFAULT_FIELDS.name,
+      description: description || DEFAULT_FIELDS.description,
+      status: status || DEFAULT_FIELDS.status,
+      priority: priority || DEFAULT_FIELDS.priority,
+      impact: impact || DEFAULT_FIELDS.impact,
+      org: org || DEFAULT_FIELDS.org,
+      isNew: isNew || DEFAULT_FIELDS.isNew,
+    };
+  }
+
   const ORG_META = {
     oz: { title: 'OZ (TnS IL)', dot: 'dot-oz' },
     'tns-us': { title: 'TnS US', dot: 'dot-tns-us' },
@@ -438,7 +527,9 @@
       <input id="setup-table" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" />
       <div style="margin-bottom:14px;padding:12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;">
         <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px;">Airtable column names</h3>
-        <p style="font-size:11px;color:#64748b;margin:0 0 10px;line-height:1.45;">If cards show <strong>Untitled</strong> or <strong>Status TBD</strong>, type each <strong>grid header</strong> from your Airtable table exactly (spelling and spaces). Leave a row blank to use the default in parentheses.</p>
+        <p style="font-size:11px;color:#64748b;margin:0 0 8px;line-height:1.45;">If cards show <strong>Untitled</strong> or <strong>Status TBD</strong>, type each <strong>grid header</strong> from your Airtable table exactly (spelling and spaces). Leave a row blank to use the default in parentheses.</p>
+        <button type="button" id="setup-autodetect" class="reset-btn" style="margin-bottom:10px;font-size:12px;font-weight:600;">Auto-detect from Airtable</button>
+        <p style="font-size:10px;color:#64748b;margin:-4px 0 8px;line-height:1.4;">Uses your token + base + table (+ view if set) to read a few rows and guess column names. Check the fields, then <strong>Save &amp; load</strong>.</p>
         <div style="display:grid;gap:8px;">
           <label style="font-size:11px;font-weight:600;color:#475569;">Title / name <span style="font-weight:400;color:#94a3b8">(default: Name)</span><input id="setup-f-name" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
           <label style="font-size:11px;font-weight:600;color:#475569;">Description <span style="font-weight:400;color:#94a3b8">(Description)</span><input id="setup-f-description" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
@@ -474,6 +565,50 @@
     });
     document.getElementById('setup-cancel').addEventListener('click', close);
     document.getElementById('setup-clear').addEventListener('click', clearStoredConnectionAndReload);
+    document.getElementById('setup-autodetect').addEventListener('click', async () => {
+      const btn = document.getElementById('setup-autodetect');
+      const pat =
+        normalizeToken(document.getElementById('setup-pat').value) || loadMergedConfig().airtablePat;
+      const baseId = document.getElementById('setup-base').value.trim();
+      const tableName = document.getElementById('setup-table').value.trim() || 'Initiatives';
+      const viewName = document.getElementById('setup-view').value.trim();
+      if (!pat || !baseId) {
+        window.alert('Fill in Personal Access Token and Base ID first (or save a token once, then open Setup again).');
+        return;
+      }
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = 'Detecting…';
+      try {
+        const records = await fetchSampleRecords(
+          { airtablePat: pat, baseId, tableName, viewName },
+          10
+        );
+        const guessed = guessFieldMappingFromRecords(records);
+        if (!guessed) {
+          window.alert('No fields found in sample rows. Check table name and view.');
+          return;
+        }
+        document.getElementById('setup-f-name').value = guessed.name;
+        document.getElementById('setup-f-description').value = guessed.description;
+        document.getElementById('setup-f-status').value = guessed.status;
+        document.getElementById('setup-f-priority').value = guessed.priority;
+        document.getElementById('setup-f-impact').value = guessed.impact;
+        document.getElementById('setup-f-org').value = guessed.org;
+        document.getElementById('setup-f-isNew').value = guessed.isNew;
+        window.alert(
+          'Filled best guesses for column names. Review them, adjust if needed, then click Save & load.\n\nGuessed:\n' +
+            Object.entries(guessed)
+              .map(([k, v]) => k + ' → ' + v)
+              .join('\n')
+        );
+      } catch (e) {
+        window.alert('Could not auto-detect: ' + (e.message || String(e)));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = old;
+      }
+    });
     document.getElementById('setup-save').addEventListener('click', () => {
       const pat = normalizeToken(document.getElementById('setup-pat').value);
       const patch = {
