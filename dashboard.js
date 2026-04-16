@@ -3,6 +3,14 @@
 
   const STORAGE_KEY = 'airtable_dashboard_config_v1';
 
+  /** Trim + strip BOM / zero-width chars (common when pasting from Slack/email). */
+  function normalizeToken(t) {
+    if (t == null) return '';
+    let s = String(t).trim().replace(/^\uFEFF/, '');
+    s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
+    return s.trim();
+  }
+
   function loadMergedConfig() {
     const base = Object.assign(
       {
@@ -24,18 +32,34 @@
       },
       window.DASHBOARD_CONFIG || {}
     );
+    let merged;
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return Object.assign({}, base, saved);
+      merged = Object.assign({}, base, saved);
     } catch {
-      return base;
+      merged = base;
     }
+    merged.airtablePat = normalizeToken(merged.airtablePat);
+    merged.baseId = String(merged.baseId || '').trim();
+    merged.tableName = String(merged.tableName || '').trim() || 'Initiatives';
+    merged.viewName = String(merged.viewName || '').trim();
+    return merged;
   }
 
   function saveLocalConfig(patch) {
     const cur = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     const next = Object.assign({}, cur, patch);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (next.airtablePat != null) next.airtablePat = normalizeToken(next.airtablePat);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch (e) {
+      window.alert(
+        'Could not save to browser storage: ' +
+          (e && e.message ? e.message : String(e)) +
+          '. Try turning off private browsing or freeing disk space.'
+      );
+      throw e;
+    }
     Object.assign(window.DASHBOARD_CONFIG || {}, next);
   }
 
@@ -168,11 +192,15 @@
     const base = cfg.baseId.trim();
     let url = `https://api.airtable.com/v0/${base}/${table}?pageSize=100`;
     if (cfg.viewName) url += `&view=${encodeURIComponent(cfg.viewName)}`;
-    const headers = { Authorization: `Bearer ${cfg.airtablePat.trim()}` };
+    const token = normalizeToken(cfg.airtablePat);
+    if (!token) throw new Error('Missing token after normalize — paste your PAT in Setup and save again.');
+    const headers = { Authorization: 'Bearer ' + token };
     const rows = [];
     let offset = '';
     for (;;) {
       const res = await fetch(offset ? `${url}&offset=${encodeURIComponent(offset)}` : url, {
+        method: 'GET',
+        mode: 'cors',
         headers,
       });
       if (!res.ok) {
@@ -316,8 +344,13 @@
   function setError(msg) {
     const el = document.getElementById('dashboard-mount');
     if (!el) return;
+    const authHint =
+      msg.indexOf('AUTHENTICATION_REQUIRED') !== -1
+        ? `<p style="margin-top:10px;font-size:13px;color:#7f1d1d;line-height:1.5;"><strong>If you see “Authentication required”:</strong> copy the token again from Airtable (long string starting with <code>pat</code>… or legacy <code>key</code>…). Re‑paste it in Setup — no spaces before/after. Then <strong>Save &amp; load</strong>. Create a <em>new</em> token if unsure.</p>`
+        : '';
     el.innerHTML = `<div style="padding:32px;margin:24px 32px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;color:#991b1b;font-size:14px;">
       <strong>Could not load data</strong><p style="margin-top:8px;line-height:1.5;">${escapeHtml(msg)}</p>
+      ${authHint}
       <p style="margin-top:12px;font-size:13px;color:#7f1d1d;">Check Personal Access Token scopes (data.records:read), base id, and table name. Open setup below if you need to change credentials.</p>
       <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:10px;">
         <button type="button" class="reset-btn" onclick="window.__openDashboardSetup()">Open setup</button>
@@ -403,13 +436,23 @@
     document.getElementById('setup-cancel').addEventListener('click', close);
     document.getElementById('setup-clear').addEventListener('click', clearStoredConnectionAndReload);
     document.getElementById('setup-save').addEventListener('click', () => {
-      const pat = document.getElementById('setup-pat').value.trim();
+      const pat = normalizeToken(document.getElementById('setup-pat').value);
       const patch = {
         baseId: document.getElementById('setup-base').value.trim(),
         tableName: document.getElementById('setup-table').value.trim() || 'Initiatives',
         viewName: document.getElementById('setup-view').value.trim(),
       };
-      if (pat) patch.airtablePat = pat;
+      if (pat) {
+        if (pat.length < 30) {
+          if (
+            !window.confirm(
+              'This token looks very short. Airtable personal access tokens are usually a long string starting with pat. Continue saving anyway?'
+            )
+          )
+            return;
+        }
+        patch.airtablePat = pat;
+      }
       saveLocalConfig(patch);
       close();
       ensureRefreshTimer();
