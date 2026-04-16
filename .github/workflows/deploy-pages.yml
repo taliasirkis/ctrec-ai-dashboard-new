@@ -1,0 +1,88 @@
+# Builds the static site and deploys to GitHub Pages. Injects a read-only Airtable PAT from
+# repository secrets into config.js so all visitors see the same data (no per-browser Setup).
+#
+# Required once in the repo: Settings → Secrets and variables → Actions → New repository secret
+#   AIRTABLE_PAT       — Personal access token (data.records:read, scoped to this base only)
+#   AIRTABLE_BASE_ID   — e.g. appXXXXXXXXXXXXXX
+# Optional:
+#   AIRTABLE_TABLE_NAME (default: Initiatives)
+#   AIRTABLE_VIEW_NAME  (default: empty)
+#
+# Settings → Pages → Build and deployment → Source: GitHub Actions (not “Deploy from branch”).
+
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        env:
+          AIRTABLE_PAT: ${{ secrets.AIRTABLE_PAT }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
+          AIRTABLE_VIEW_NAME: ${{ secrets.AIRTABLE_VIEW_NAME }}
+        run: |
+          set -e
+          mkdir -p _site
+          for f in index.html dashboard.js token.example.txt q4_ctrec_ai_dashboard.html .nojekyll config.example.js README.md; do
+            if [ -f "$f" ]; then cp "$f" _site/; fi
+          done
+          node <<'NODE'
+          const fs = require('fs');
+          const pat = process.env.AIRTABLE_PAT || '';
+          const baseId = process.env.AIRTABLE_BASE_ID || '';
+          const table = process.env.AIRTABLE_TABLE_NAME || 'Initiatives';
+          const view = process.env.AIRTABLE_VIEW_NAME || '';
+          let body;
+          if (pat && baseId) {
+            body =
+              'Object.assign(window.DASHBOARD_CONFIG, {\n' +
+              '  siteWideConnection: true,\n' +
+              '  airtablePat: ' +
+              JSON.stringify(pat) +
+              ',\n' +
+              '  baseId: ' +
+              JSON.stringify(baseId) +
+              ',\n' +
+              '  tableName: ' +
+              JSON.stringify(table) +
+              ',\n' +
+              '  viewName: ' +
+              JSON.stringify(view) +
+              ',\n' +
+              '});\n';
+          } else {
+            body =
+              '/* No AIRTABLE_PAT / AIRTABLE_BASE_ID secrets: visitors use Setup. Add both secrets for shared read-only access. */\n';
+          }
+          fs.writeFileSync('_site/config.js', body, 'utf8');
+          NODE
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

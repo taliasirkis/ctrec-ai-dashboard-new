@@ -9,7 +9,7 @@ This repo is the **live** version of the dashboard: **`index.html`** + **`dashbo
 ## What you get
 
 - **GitHub Pages**: static hosting from this repo’s root.
-- **Live data**: each visitor’s browser calls the Airtable API using a **Personal Access Token (PAT)** stored in that browser’s **localStorage** (via **Setup**). No server required.
+- **Live data**: each visitor’s browser calls the Airtable API. By default the **PAT** is stored in **localStorage** (via **Setup**). Optionally, **GitHub Actions** can inject a read-only PAT at deploy time so **everyone** loads the same base without Setup (see below).
 - **Always up to date while the tab is open**: automatic refetch (default **5 minutes**) + **Refresh now**.
 
 > **Reality check:** “Live all the time” in the browser means **when someone has the page open**, it keeps polling Airtable. There is no background server in this stack. For 24/7 server-side sync you would need a backend (out of scope here).
@@ -29,11 +29,22 @@ This repo is the **live** version of the dashboard: **`index.html`** + **`dashbo
 
 ### 2) Enable GitHub Pages
 
+**Option A — Deploy from branch (simplest, per-visitor Setup)**
+
 1. Repo → **Settings** → **Pages**.
 2. **Build and deployment** → **Source** → **Deploy from a branch**.
-3. Branch **main** (or your default), folder **`/ (root)`**, **Save**.
-4. After a minute, open the published URL (shown on the same page), e.g.  
-   `https://<YOUR_USER>.github.io/<YOUR_REPO>/`
+3. Branch **main**, folder **`/ (root)`**, **Save**.
+
+**Option B — GitHub Actions (recommended if everyone should see the same data)**
+
+1. Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
+   - `AIRTABLE_PAT` — read-only PAT (`data.records:read`, scoped to this base only).
+   - `AIRTABLE_BASE_ID` — e.g. `appXXXXXXXXXXXXXX`.
+   - Optional: `AIRTABLE_TABLE_NAME` (default `Initiatives`), `AIRTABLE_VIEW_NAME`.
+2. **Settings** → **Pages** → **Build and deployment** → **Source** → **GitHub Actions** (not the branch option).
+3. Push to **`main`** (or run the **Deploy GitHub Pages** workflow manually). The workflow in `.github/workflows/deploy-pages.yml` copies the static files into an artifact, writes **`config.js`** from those secrets (never committed), and publishes the site.
+
+After either option, open the site URL, e.g. `https://<YOUR_USER>.github.io/<YOUR_REPO>/`
 
 ### 3) Connect Airtable on first visit
 
@@ -51,6 +62,12 @@ This repo is the **live** version of the dashboard: **`index.html`** + **`dashbo
 
 5. Use **Auto-detect** if column names differ from defaults, then **Save & load** again.
 
+### Everyone should see the same data (no per-visitor Setup)
+
+**Preferred:** use **Option B** above — the **Deploy GitHub Pages** workflow writes `config.js` at build time with `siteWideConnection: true` and your secrets. The token **never** appears in git history on `main`.
+
+**Manual:** in **`index.html`** (inside `window.DASHBOARD_CONFIG`) or in a **`config.js`** you upload with the site, set `siteWideConnection: true`, `airtablePat`, `baseId`, and table/view as needed. Anything in public HTML/JS can be copied; use a **read-only** PAT scoped to **one base** only.
+
 ### 4) Match your grid (if needed)
 
 Defaults live in `index.html` inside `window.DASHBOARD_CONFIG` (`fields`, `orgSlugMap`, `refreshMs`).  
@@ -67,6 +84,7 @@ You can copy **`config.example.js`** → **`config.js`** for overrides; **`confi
 | `q4_ctrec_ai_dashboard.html` | Static reference only (no live data) |
 | `.nojekyll` | Disable Jekyll on Pages |
 | `config.example.js` | Example `config.js` overrides |
+| `.github/workflows/deploy-pages.yml` | Optional: Pages deploy + inject PAT from Actions secrets |
 | `token.example.txt` | Notes for local `curl` only |
 
 ---
@@ -75,7 +93,8 @@ You can copy **`config.example.js`** → **`config.js`** for overrides; **`confi
 
 | Problem | What to try |
 |---------|-------------|
-| 404 on Pages | Confirm Pages source is branch + `/ (root)`; wait a few minutes after first push. |
+| 404 on Pages | Confirm Pages source (branch **or** Actions) matches how you deploy; wait a few minutes after first push. |
+| Actions deploy fails / site empty | **Pages** source must be **GitHub Actions** if you use the workflow; approve the `github-pages` environment the first time if prompted. |
 | Auth / permission errors | PAT scopes; re-paste token in Setup; base + table names correct. |
 | Untitled / missing status or org | **Auto-detect**; add `schema.bases:read`; or type **exact** Airtable column names in Setup. Linked-record fields need a **Lookup/Formula** that exposes text. |
 | Old UI after deploy | Hard refresh (`Cmd+Shift+R`). `dashboard.js` is versioned with `?v=` in `index.html` — bump when you change JS so browsers fetch the new file. |
