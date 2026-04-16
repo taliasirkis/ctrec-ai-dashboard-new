@@ -1,12 +1,17 @@
-# Builds the static site and deploys to GitHub Pages. Injects a read-only Airtable PAT from
-# repository secrets into config.js so all visitors see the same data (no per-browser Setup).
+# Builds the static site and deploys to GitHub Pages. Writes config.js from secrets so all
+# visitors load the same data without per-browser Setup.
 #
-# Required once in the repo: Settings → Secrets and variables → Actions → New repository secret
-#   AIRTABLE_PAT       — Personal access token (data.records:read, scoped to this base only)
-#   AIRTABLE_BASE_ID   — e.g. appXXXXXXXXXXXXXX
-# Optional:
-#   AIRTABLE_TABLE_NAME (default: Initiatives)
-#   AIRTABLE_VIEW_NAME  (default: empty)
+# Mode A — Cloudflare proxy (Airtable PAT never in the Pages bundle):
+#   DATA_PROXY_URL     — Worker origin, no trailing slash, e.g. https://….workers.dev
+#   AIRTABLE_BASE_ID   — app… (must match the worker’s AIRTABLE_BASE_ID)
+# Optional: DATA_PROXY_KEY (same as Worker BROWSER_KEY), AIRTABLE_TABLE_NAME, AIRTABLE_VIEW_NAME
+#
+# Mode B — PAT in config.js (simpler, but token is in the deployed script):
+#   AIRTABLE_PAT       — read-only PAT
+#   AIRTABLE_BASE_ID
+# Optional: AIRTABLE_TABLE_NAME, AIRTABLE_VIEW_NAME
+#
+# If Mode A secrets are set, Mode B PAT is ignored for config.js.
 #
 # Settings → Pages → Build and deployment → Source: GitHub Actions (not “Deploy from branch”).
 
@@ -41,6 +46,8 @@ jobs:
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
           AIRTABLE_VIEW_NAME: ${{ secrets.AIRTABLE_VIEW_NAME }}
+          DATA_PROXY_URL: ${{ secrets.DATA_PROXY_URL }}
+          DATA_PROXY_KEY: ${{ secrets.DATA_PROXY_KEY }}
         run: |
           set -e
           mkdir -p _site
@@ -50,11 +57,34 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const pat = process.env.AIRTABLE_PAT || '';
+          const proxyUrl = (process.env.DATA_PROXY_URL || '').trim().replace(/\/+$/, '');
+          const proxyKey = process.env.DATA_PROXY_KEY || '';
           const baseId = process.env.AIRTABLE_BASE_ID || '';
           const table = process.env.AIRTABLE_TABLE_NAME || 'Initiatives';
           const view = process.env.AIRTABLE_VIEW_NAME || '';
           let body;
-          if (pat && baseId) {
+          if (proxyUrl && baseId) {
+            body =
+              'Object.assign(window.DASHBOARD_CONFIG, {\n' +
+              '  siteWideConnection: true,\n' +
+              '  airtablePat: "",\n' +
+              '  dataProxyUrl: ' +
+              JSON.stringify(proxyUrl) +
+              ',\n' +
+              (proxyKey
+                ? '  dataProxyKey: ' + JSON.stringify(proxyKey) + ',\n'
+                : '') +
+              '  baseId: ' +
+              JSON.stringify(baseId) +
+              ',\n' +
+              '  tableName: ' +
+              JSON.stringify(table) +
+              ',\n' +
+              '  viewName: ' +
+              JSON.stringify(view) +
+              ',\n' +
+              '});\n';
+          } else if (pat && baseId) {
             body =
               'Object.assign(window.DASHBOARD_CONFIG, {\n' +
               '  siteWideConnection: true,\n' +
@@ -73,7 +103,7 @@ jobs:
               '});\n';
           } else {
             body =
-              '/* No AIRTABLE_PAT / AIRTABLE_BASE_ID secrets: visitors use Setup. Add both secrets for shared read-only access. */\n';
+              '/* Add Actions secrets: DATA_PROXY_URL + AIRTABLE_BASE_ID (recommended), or AIRTABLE_PAT + AIRTABLE_BASE_ID. */\n';
           }
           fs.writeFileSync('_site/config.js', body, 'utf8');
           NODE

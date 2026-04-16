@@ -9,7 +9,7 @@ This repo is the **live** version of the dashboard: **`index.html`** + **`dashbo
 ## What you get
 
 - **GitHub Pages**: static hosting from this repo’s root.
-- **Live data**: each visitor’s browser calls the Airtable API. By default the **PAT** is stored in **localStorage** (via **Setup**). Optionally, **GitHub Actions** can inject a read-only PAT at deploy time so **everyone** loads the same base without Setup (see below).
+- **Live data**: each visitor’s browser loads rows from Airtable. By default the **PAT** is in **localStorage** (via **Setup**). For a **shared public** site, prefer a small **Cloudflare Worker** proxy (`airtable-proxy/`) so the Airtable PAT never ships to the browser; **GitHub Actions** can inject only the worker URL into `config.js` (see below).
 - **Always up to date while the tab is open**: automatic refetch (default **5 minutes**) + **Refresh now**.
 
 > **Reality check:** “Live all the time” in the browser means **when someone has the page open**, it keeps polling Airtable. There is no background server in this stack. For 24/7 server-side sync you would need a backend (out of scope here).
@@ -37,12 +37,12 @@ This repo is the **live** version of the dashboard: **`index.html`** + **`dashbo
 
 **Option B — GitHub Actions (recommended if everyone should see the same data)**
 
-1. Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
-   - `AIRTABLE_PAT` — read-only PAT (`data.records:read`, scoped to this base only).
-   - `AIRTABLE_BASE_ID` — e.g. `appXXXXXXXXXXXXXX`.
-   - Optional: `AIRTABLE_TABLE_NAME` (default `Initiatives`), `AIRTABLE_VIEW_NAME`.
-2. **Settings** → **Pages** → **Build and deployment** → **Source** → **GitHub Actions** (not the branch option).
-3. Push to **`main`** (or run the **Deploy GitHub Pages** workflow manually). The workflow in `.github/workflows/deploy-pages.yml` copies the static files into an artifact, writes **`config.js`** from those secrets (never committed), and publishes the site.
+1. Deploy the **Cloudflare Worker** in **`airtable-proxy/`** (see **`airtable-proxy/README.md`**) and note its `https://….workers.dev` URL.
+2. Repo → **Settings** → **Secrets and variables** → **Actions** — add either:
+   - **Recommended (PAT not in Pages):** `DATA_PROXY_URL` (worker origin, no trailing slash), `AIRTABLE_BASE_ID`, and optional `DATA_PROXY_KEY` (if you set `BROWSER_KEY` on the worker), `AIRTABLE_TABLE_NAME`, `AIRTABLE_VIEW_NAME`.
+   - **Simpler (PAT in deployed `config.js`):** `AIRTABLE_PAT`, `AIRTABLE_BASE_ID`, and optional table/view secrets as above.
+3. **Settings** → **Pages** → **Build and deployment** → **Source** → **GitHub Actions** (not the branch option).
+4. Push to **`main`** (or run **Deploy GitHub Pages**). The workflow writes **`config.js`** (never committed to `main`) and publishes the site.
 
 After either option, open the site URL, e.g. `https://<YOUR_USER>.github.io/<YOUR_REPO>/`
 
@@ -51,7 +51,7 @@ After either option, open the site URL, e.g. `https://<YOUR_USER>.github.io/<YOU
 1. Open the **Pages URL** (must be `index.html` at root, which is the default).
 2. Click **Setup**.
 3. Fill in:
-   - **Personal access token** — [Create token](https://airtable.com/create/tokens) with **`data.records:read`** on your base.  
+   - **Personal access token** — [Create token](https://airtable.com/create/tokens) with **`data.records:read`** on your base (not needed if you use a **data proxy URL** instead).  
      Recommended: also add **`schema.bases:read`** so the app can detect the table primary field and likely Status/Org columns.
    - **Base ID** — from the base URL: `https://airtable.com/<BASE_ID>/...` (starts with `app`).
    - **Table name** — exactly as in Airtable (or the table ID `tbl…`).
@@ -64,9 +64,11 @@ After either option, open the site URL, e.g. `https://<YOUR_USER>.github.io/<YOU
 
 ### Everyone should see the same data (no per-visitor Setup)
 
-**Preferred:** use **Option B** above — the **Deploy GitHub Pages** workflow writes `config.js` at build time with `siteWideConnection: true` and your secrets. The token **never** appears in git history on `main`.
+**Best:** **Cloudflare Worker** (`airtable-proxy/`) holds the Airtable PAT. The dashboard sets **`dataProxyUrl`** (+ optional **`dataProxyKey`**) and leaves **`airtablePat`** empty. Use **Option B** with **`DATA_PROXY_URL`** secrets so the built **`config.js`** never contains the Airtable PAT (only an optional short browser key).
 
-**Manual:** in **`index.html`** (inside `window.DASHBOARD_CONFIG`) or in a **`config.js`** you upload with the site, set `siteWideConnection: true`, `airtablePat`, `baseId`, and table/view as needed. Anything in public HTML/JS can be copied; use a **read-only** PAT scoped to **one base** only.
+**Acceptable:** inject **`AIRTABLE_PAT`** via Actions or **`config.js`** — still works, but anyone can extract that PAT from the published site.
+
+**Manual:** in **`index.html`** or **`config.js`**, set `siteWideConnection: true` plus either proxy fields or `airtablePat`, with `baseId` / table / view.
 
 ### 4) Match your grid (if needed)
 
@@ -84,7 +86,8 @@ You can copy **`config.example.js`** → **`config.js`** for overrides; **`confi
 | `q4_ctrec_ai_dashboard.html` | Static reference only (no live data) |
 | `.nojekyll` | Disable Jekyll on Pages |
 | `config.example.js` | Example `config.js` overrides |
-| `.github/workflows/deploy-pages.yml` | Optional: Pages deploy + inject PAT from Actions secrets |
+| `airtable-proxy/` | Cloudflare Worker: keeps Airtable PAT server-side |
+| `.github/workflows/deploy-pages.yml` | Pages deploy + write `config.js` from Actions secrets |
 | `token.example.txt` | Notes for local `curl` only |
 
 ---
@@ -99,6 +102,7 @@ You can copy **`config.example.js`** → **`config.js`** for overrides; **`confi
 | Untitled / missing status or org | **Auto-detect**; add `schema.bases:read`; or type **exact** Airtable column names in Setup. Linked-record fields need a **Lookup/Formula** that exposes text. |
 | Old UI after deploy | Hard refresh (`Cmd+Shift+R`). `dashboard.js` is versioned with `?v=` in `index.html` — bump when you change JS so browsers fetch the new file. |
 | Airtable error about `filterByFormula` / unknown field | In **Setup**, uncheck “Only load Q4” or set the correct **Quarter / FY column name**, or point at a Q4-only **view** and turn the checkbox off. |
+| Browser blocks request to Worker (CORS) | On the worker, set secret **`ALLOW_ORIGINS`** to your site origin (e.g. `https://taliasirkis.github.io`) or leave unset for `*`. |
 
 ---
 

@@ -434,6 +434,9 @@ window.DASHBOARD_CONFIG = Object.assign(
      * without opening Setup. Use a read-only PAT scoped only to this base; anything in public HTML can be copied.
      */
     siteWideConnection: false,
+    /** Cloudflare Worker origin (no slash) — Airtable PAT stays on server. See airtable-proxy/README.md */
+    dataProxyUrl: '',
+    dataProxyKey: '',
     tableName: 'Initiatives',
     viewName: '',
     /** Airtable filterByFormula so only Q4 rows load (field must contain "Q4"). Turn off in Setup if your grid has no quarter column. */
@@ -468,7 +471,7 @@ window.DASHBOARD_CONFIG = Object.assign(
 );
 </script>
 <script src="config.js"></script>
-<script src="dashboard.js?v=26"></script>
+<script src="dashboard.js?v=27"></script>
 
 </body>
 </html>

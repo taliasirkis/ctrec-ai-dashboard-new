@@ -1,0 +1,15 @@
+# Rename `name` before first deploy if you like.
+name = "ctrec-airtable-proxy"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# Optional: restrict browser origins (comma-separated). Default * in worker if unset.
+# [vars]
+# ALLOW_ORIGINS = "https://taliasirkis.github.io"
+
+# Set via CLI (never commit):
+#   npx wrangler secret put AIRTABLE_PAT
+#   npx wrangler secret put AIRTABLE_BASE_ID
+# Optional:
+#   npx wrangler secret put BROWSER_KEY
+#   npx wrangler secret put ALLOW_ORIGINS

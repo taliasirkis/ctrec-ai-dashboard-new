@@ -45,6 +45,10 @@
          * Use only with a read-only PAT scoped to this base — tokens in public HTML are extractable.
          */
         siteWideConnection: false,
+        /** If set (https://…workers.dev), Airtable calls go through this proxy — PAT stays off the client. See airtable-proxy/README.md */
+        dataProxyUrl: '',
+        /** Optional; must match Worker secret BROWSER_KEY if set. */
+        dataProxyKey: '',
       },
       window.DASHBOARD_CONFIG || {}
     );
@@ -66,6 +70,8 @@
       merged.q4Only = base.q4Only !== false;
       merged.quarterField = String(base.quarterField || 'Quarter').trim() || 'Quarter';
       merged.recordFilterFormula = String(base.recordFilterFormula || '').trim();
+      merged.dataProxyUrl = String(base.dataProxyUrl || '').trim().replace(/\/+$/, '');
+      merged.dataProxyKey = String(base.dataProxyKey || '').trim();
     }
     merged.fields = Object.assign({}, DEFAULT_FIELDS, base.fields || {}, saved.fields || {});
     merged.orgSlugMap = Object.assign({}, base.orgSlugMap || {}, saved.orgSlugMap || {});
@@ -76,6 +82,10 @@
     merged.q4Only = merged.q4Only !== false;
     merged.quarterField = String(merged.quarterField || 'Quarter').trim() || 'Quarter';
     merged.recordFilterFormula = String(merged.recordFilterFormula || '').trim();
+    merged.dataProxyUrl = String(merged.dataProxyUrl || '')
+      .trim()
+      .replace(/\/+$/, '');
+    merged.dataProxyKey = String(merged.dataProxyKey || '').trim();
     return merged;
   }
 
@@ -117,7 +127,17 @@
   window.__clearDashboardConnection = clearStoredConnectionAndReload;
 
   function setSetupConnectionFieldsDisabled(siteWide) {
-    ['setup-base', 'setup-table', 'setup-view', 'setup-pat', 'setup-q4-only', 'setup-quarter-field', 'setup-record-filter-formula'].forEach(
+    [
+      'setup-base',
+      'setup-table',
+      'setup-view',
+      'setup-pat',
+      'setup-data-proxy',
+      'setup-proxy-key',
+      'setup-q4-only',
+      'setup-quarter-field',
+      'setup-record-filter-formula',
+    ].forEach(
       (id) => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -145,6 +165,10 @@
     if (qfEl) qfEl.value = c.quarterField || 'Quarter';
     const rfEl = document.getElementById('setup-record-filter-formula');
     if (rfEl) rfEl.value = c.recordFilterFormula || '';
+    const dpEl = document.getElementById('setup-data-proxy');
+    if (dpEl) dpEl.value = c.dataProxyUrl || '';
+    const pkEl = document.getElementById('setup-proxy-key');
+    if (pkEl) pkEl.value = '';
     if (patEl) patEl.value = '';
     const f = c.fields || {};
     const setF = (id, key) => {
@@ -542,19 +566,53 @@
     return url + '&filterByFormula=' + encodeURIComponent(f);
   }
 
+  function useDataProxy(cfg) {
+    return String((cfg && cfg.dataProxyUrl) || '')
+      .trim()
+      .replace(/\/+$/, '');
+  }
+
+  function airtableFetchUrl(cfg, pathWithLeadingSlashAndQuery) {
+    const proxy = useDataProxy(cfg);
+    if (proxy) return proxy + pathWithLeadingSlashAndQuery;
+    return 'https://api.airtable.com' + pathWithLeadingSlashAndQuery;
+  }
+
+  function airtableFetchHeaders(cfg) {
+    const h = {};
+    if (useDataProxy(cfg)) {
+      const key = String((cfg && cfg.dataProxyKey) || '').trim();
+      if (key) h['X-Proxy-Key'] = key;
+    } else {
+      const token = normalizeToken(cfg.airtablePat);
+      if (!token) throw new Error('Missing Airtable token — paste your PAT in Setup or set a data proxy URL.');
+      h.Authorization = 'Bearer ' + token;
+    }
+    return h;
+  }
+
+  function canLoadFromAirtable(cfg) {
+    if (!cfg || !String(cfg.baseId || '').trim() || !String(cfg.tableName || '').trim()) return false;
+    if (useDataProxy(cfg)) return true;
+    return !!normalizeToken(cfg.airtablePat);
+  }
+
   async function fetchAllRecords(cfg) {
     const table = encodeURIComponent(cfg.tableName);
     const base = cfg.baseId.trim();
-    let url = `https://api.airtable.com/v0/${base}/${table}?pageSize=100`;
-    if (cfg.viewName) url += `&view=${encodeURIComponent(cfg.viewName)}`;
-    url = appendFilterByFormula(url, cfg);
-    const token = normalizeToken(cfg.airtablePat);
-    if (!token) throw new Error('Missing token after normalize — paste your PAT in Setup and save again.');
-    const headers = { Authorization: 'Bearer ' + token };
+    let path = `/v0/${base}/${table}?pageSize=100`;
+    if (cfg.viewName) path += `&view=${encodeURIComponent(cfg.viewName)}`;
+    path = appendFilterByFormula(path, cfg);
+    const proxy = useDataProxy(cfg);
+    if (!proxy && !normalizeToken(cfg.airtablePat)) {
+      throw new Error('Missing token after normalize — paste your PAT in Setup and save again.');
+    }
+    const headers = airtableFetchHeaders(cfg);
     const rows = [];
     let offset = '';
     for (;;) {
-      const res = await fetch(offset ? `${url}&offset=${encodeURIComponent(offset)}` : url, {
+      const pathWithOffset = offset ? path + '&offset=' + encodeURIComponent(offset) : path;
+      const res = await fetch(airtableFetchUrl(cfg, pathWithOffset), {
         method: 'GET',
         mode: 'cors',
         headers,
@@ -575,12 +633,15 @@
     const table = encodeURIComponent(cfg.tableName.trim());
     const base = cfg.baseId.trim();
     const n = Math.min(Math.max(1, maxRecords || 8), 30);
-    let url = `https://api.airtable.com/v0/${base}/${table}?maxRecords=${n}`;
-    if (cfg.viewName) url += `&view=${encodeURIComponent(cfg.viewName)}`;
-    url = appendFilterByFormula(url, cfg);
-    const token = normalizeToken(cfg.airtablePat);
-    if (!token) throw new Error('Missing token');
-    const res = await fetch(url, { method: 'GET', mode: 'cors', headers: { Authorization: 'Bearer ' + token } });
+    let path = `/v0/${base}/${table}?maxRecords=${n}`;
+    if (cfg.viewName) path += `&view=${encodeURIComponent(cfg.viewName)}`;
+    path = appendFilterByFormula(path, cfg);
+    if (!useDataProxy(cfg) && !normalizeToken(cfg.airtablePat)) throw new Error('Missing token');
+    const res = await fetch(airtableFetchUrl(cfg, path), {
+      method: 'GET',
+      mode: 'cors',
+      headers: airtableFetchHeaders(cfg),
+    });
     if (!res.ok) {
       const t = await res.text();
       throw new Error(t || res.statusText || String(res.status));
@@ -594,15 +655,16 @@
    * Requires PAT scope: schema.bases:read. Returns null if unavailable (missing scope, CORS, or wrong base).
    */
   async function fetchTableSchemaHints(cfg) {
-    const token = normalizeToken(cfg.airtablePat);
     const baseId = String(cfg.baseId || '').trim();
     const tableKey = String(cfg.tableName || '').trim();
-    if (!token || !baseId || !tableKey) return null;
+    if (!baseId || !tableKey) return null;
+    if (!useDataProxy(cfg) && !normalizeToken(cfg.airtablePat)) return null;
     try {
-      const res = await fetch('https://api.airtable.com/v0/meta/bases/' + encodeURIComponent(baseId) + '/tables', {
+      const metaPath = '/v0/meta/bases/' + encodeURIComponent(baseId) + '/tables';
+      const res = await fetch(airtableFetchUrl(cfg, metaPath), {
         method: 'GET',
         mode: 'cors',
-        headers: { Authorization: 'Bearer ' + token },
+        headers: airtableFetchHeaders(cfg),
       });
       if (!res.ok) return null;
       const data = await res.json();
@@ -1105,8 +1167,8 @@
 
   async function refresh() {
     const cfg = Object.assign({}, loadMergedConfig());
-    if (!cfg.airtablePat || !cfg.baseId || !cfg.tableName) {
-      setError('Missing Airtable configuration. Use Setup to add your token and base id.');
+    if (!canLoadFromAirtable(cfg)) {
+      setError('Missing Airtable configuration. Use Setup: base id + table name, and either a PAT or a data proxy URL.');
       return;
     }
     setLoading('Loading from Airtable…');
@@ -1173,6 +1235,12 @@
       <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Personal Access Token</label>
       <p class="setup-note" style="margin:-2px 0 6px;"># Plain text field — paste full pat… secret. Leave blank + save to keep existing token when editing base/table only.</p>
       <input id="setup-pat" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;" placeholder="pat… (paste full token)" />
+      <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Data proxy URL (optional)</label>
+      <p class="setup-note" style="margin:-2px 0 6px;"># Cloudflare Worker origin, no trailing slash — keeps PAT off the browser. See repo <code style="font-size:11px;">airtable-proxy/README.md</code></p>
+      <input id="setup-data-proxy" type="url" spellcheck="false" autocapitalize="off" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;" placeholder="https://….workers.dev" />
+      <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Proxy key (optional)</label>
+      <p class="setup-note" style="margin:-2px 0 6px;"># Only if the worker uses secret BROWSER_KEY — same value as <code style="font-size:11px;">X-Proxy-Key</code></p>
+      <input id="setup-proxy-key" type="password" spellcheck="false" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;" placeholder="leave blank if worker has no key" />
       <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Base ID</label>
       <input id="setup-base" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" placeholder="appXXXXXXXXXXXXXX" />
       <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Table name</label>
@@ -1231,31 +1299,37 @@
     document.getElementById('setup-clear').addEventListener('click', clearStoredConnectionAndReload);
     document.getElementById('setup-autodetect').addEventListener('click', async () => {
       const btn = document.getElementById('setup-autodetect');
-      const pat =
-        normalizeToken(document.getElementById('setup-pat').value) || loadMergedConfig().airtablePat;
+      const merged = loadMergedConfig();
+      const pat = normalizeToken(document.getElementById('setup-pat').value) || merged.airtablePat;
       const baseId = document.getElementById('setup-base').value.trim();
       const tableName = document.getElementById('setup-table').value.trim() || 'Initiatives';
       const viewName = document.getElementById('setup-view').value.trim();
       const q4Only = document.getElementById('setup-q4-only').checked;
       const quarterField = document.getElementById('setup-quarter-field').value.trim() || 'Quarter';
       const recordFilterFormula = document.getElementById('setup-record-filter-formula').value.trim();
-      if (!pat || !baseId) {
-        window.alert('Fill in Personal Access Token and Base ID first (or save a token once, then open Setup again).');
+      const dpUrl = document.getElementById('setup-data-proxy').value.trim();
+      const dpKey = document.getElementById('setup-proxy-key').value.trim();
+      const tmpCfg = Object.assign({}, merged, {
+        airtablePat: pat,
+        baseId: baseId,
+        tableName: tableName,
+        viewName: viewName,
+        q4Only: q4Only,
+        quarterField: quarterField,
+        recordFilterFormula: recordFilterFormula,
+        dataProxyUrl: dpUrl || merged.dataProxyUrl,
+        dataProxyKey: dpKey || merged.dataProxyKey,
+      });
+      if (!canLoadFromAirtable(tmpCfg)) {
+        window.alert(
+          'Fill in Base ID and table name, and either a Personal Access Token or a Data proxy URL (see airtable-proxy/README.md).'
+        );
         return;
       }
       btn.disabled = true;
       const old = btn.textContent;
       btn.textContent = 'Detecting…';
       try {
-        const tmpCfg = Object.assign({}, loadMergedConfig(), {
-          airtablePat: pat,
-          baseId: baseId,
-          tableName: tableName,
-          viewName: viewName,
-          q4Only: q4Only,
-          quarterField: quarterField,
-          recordFilterFormula: recordFilterFormula,
-        });
         const schemaHints = (await fetchTableSchemaHints(tmpCfg)) || {};
         tmpCfg._schemaHints = schemaHints;
         const records = await fetchSampleRecords(tmpCfg, 30);
@@ -1307,6 +1381,8 @@
             q4Only: document.getElementById('setup-q4-only').checked,
             quarterField: document.getElementById('setup-quarter-field').value.trim() || 'Quarter',
             recordFilterFormula: document.getElementById('setup-record-filter-formula').value.trim(),
+            dataProxyUrl: document.getElementById('setup-data-proxy').value.trim().replace(/\/+$/, ''),
+            dataProxyKey: document.getElementById('setup-proxy-key').value.trim(),
           };
       if (!siteWide && pat) {
         if (pat.length < 30) {
@@ -1331,9 +1407,9 @@
       };
       saveLocalConfig(patch);
       const verify = loadMergedConfig();
-      if (!verify.airtablePat || verify.airtablePat.length < 12) {
+      if (!useDataProxy(verify) && (!verify.airtablePat || verify.airtablePat.length < 12)) {
         window.alert(
-          'No token was saved in this browser. Paste your full Airtable PAT in the token field and click Save again.\n\nNote: token.txt is only for Terminal curl — the website keeps a separate copy here in Setup.'
+          'No token was saved in this browser. Paste your full Airtable PAT in the token field and click Save again — or set a Data proxy URL so the PAT is not required in the browser.\n\nNote: token.txt is only for Terminal curl — the website keeps a separate copy here in Setup.'
         );
         return;
       }
@@ -1454,7 +1530,7 @@
     loadTokenExampleDoc();
     injectSetupModal();
     const cfg = loadMergedConfig();
-    if (!cfg.airtablePat || !cfg.baseId) {
+    if (!canLoadFromAirtable(cfg)) {
       setError('Configure Airtable to load live data.');
       window.__openDashboardSetup();
     } else {

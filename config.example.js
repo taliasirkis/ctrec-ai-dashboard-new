@@ -13,6 +13,9 @@ window.DASHBOARD_CONFIG = {
    * Lets all visitors see the same data without Setup. Token in a public repo = public read access; use read-only PAT.
    */
   siteWideConnection: false,
+  /** Worker URL — then leave airtablePat empty so the browser never holds your Airtable PAT. */
+  dataProxyUrl: '',
+  dataProxyKey: '',
   tableName: 'Initiatives',
   viewName: '',
   /** When true, only rows where quarterField contains "Q4" are fetched (unless recordFilterFormula is set). */
