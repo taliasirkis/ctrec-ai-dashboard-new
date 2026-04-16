@@ -29,6 +29,7 @@ window.DASHBOARD_CONFIG = {
   orgSlugMap: {
     'oz (tns il)': 'oz',
     oz: 'oz',
+    'tns il': 'oz',
     'tns us': 'tns-us',
     'tns-us': 'tns-us',
     iai: 'iai',

@@ -116,18 +116,232 @@
     setF('setup-f-isNew', 'isNew');
   }
 
-  function cellValue(record, fieldName) {
-    if (!fieldName || !record.fields) return '';
-    const v = record.fields[fieldName];
+  /** Flatten Airtable cell values to a display string (selects, lookups, arrays, etc.). */
+  function stringFromAirtableValue(v) {
     if (v == null) return '';
     if (typeof v === 'string' || typeof v === 'number') return String(v);
-    if (typeof v === 'boolean') return v;
+    if (typeof v === 'boolean') return v ? 'Yes' : '';
     if (Array.isArray(v)) {
-      if (v.length && typeof v[0] === 'object' && v[0].url) return v.map((a) => a.url).join(', ');
-      return v.map((x) => (typeof x === 'object' && x.name ? x.name : String(x))).join(', ');
+      if (!v.length) return '';
+      if (typeof v[0] === 'object' && v[0] && v[0].url != null) {
+        return v
+          .map((a) => (a && a.url ? String(a.url) : ''))
+          .filter(Boolean)
+          .join(', ');
+      }
+      const parts = v.map((x) => {
+        if (x == null) return '';
+        if (typeof x === 'string' || typeof x === 'number') return String(x);
+        if (typeof x === 'object' && x.name != null) return String(x.name);
+        if (typeof x === 'object' && x.id != null && x.name == null) return '';
+        try {
+          return String(x);
+        } catch {
+          return '';
+        }
+      });
+      return parts.filter(Boolean).join(', ');
     }
-    if (typeof v === 'object' && v.name != null) return String(v.name);
-    return String(v);
+    if (typeof v === 'object') {
+      if (v.name != null) return String(v.name);
+      if (v.email != null) return String(v.email);
+      if (v.value != null) return String(v.value);
+      if (v.state != null) return String(v.state);
+    }
+    try {
+      return String(v);
+    } catch {
+      return '';
+    }
+  }
+
+  function cellValue(record, fieldName) {
+    if (!record.fields) return '';
+    const fn = fieldName != null ? String(fieldName).trim() : '';
+    if (!fn) return '';
+    return stringFromAirtableValue(record.fields[fn]).trim();
+  }
+
+  /** First non-empty field on this row whose name matches any regex (keys sorted for stable picks). */
+  function firstFieldByRegex(record, regexList, skipNormalizedNames) {
+    const skip = skipNormalizedNames || new Set();
+    const fields = record.fields || {};
+    const keys = Object.keys(fields).sort(function (a, b) {
+      return a.localeCompare(b);
+    });
+    for (let r = 0; r < regexList.length; r++) {
+      const re = regexList[r];
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (skip.has(norm(k))) continue;
+        if (!re.test(k)) continue;
+        const s = stringFromAirtableValue(fields[k]).trim();
+        if (s) return s;
+      }
+    }
+    return '';
+  }
+
+  function orderedUniqueFieldKeys(keys) {
+    const out = [];
+    const seen = new Set();
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (!k) continue;
+      const nk = norm(k);
+      if (seen.has(nk)) continue;
+      seen.add(nk);
+      out.push(k);
+    }
+    return out;
+  }
+
+  function resolveName(record, cfg) {
+    const f = cfg.fields || {};
+    const hints = cfg._schemaHints;
+    const tryKeys = orderedUniqueFieldKeys(
+      [hints && hints.primaryFieldName, f.name].filter(Boolean)
+    );
+    for (let i = 0; i < tryKeys.length; i++) {
+      const v = cellValue(record, tryKeys[i]);
+      if (v) return v;
+    }
+    const skip = new Set();
+    if (hints && hints.primaryFieldName) skip.add(norm(hints.primaryFieldName));
+    if (f.name) skip.add(norm(f.name));
+    if (f.description) skip.add(norm(f.description));
+    const fb = firstFieldByRegex(
+      record,
+      [
+        /\binitiative\s*name\b/i,
+        /^initiative(\b|[\s_-])/i,
+        /^title$/i,
+        /^project(\b|[\s_-])/i,
+        /^program$/i,
+        /^name$/i,
+      ],
+      skip
+    );
+    return fb || 'Untitled';
+  }
+
+  function resolveStatusDisplay(record, cfg) {
+    const f = cfg.fields || {};
+    const hints = cfg._schemaHints;
+    const tryKeys = orderedUniqueFieldKeys([hints && hints.statusField, f.status].filter(Boolean));
+    for (let i = 0; i < tryKeys.length; i++) {
+      const v = cellValue(record, tryKeys[i]);
+      if (v) return v;
+    }
+    const skip = new Set();
+    if (hints && hints.statusField) skip.add(norm(hints.statusField));
+    if (f.status) skip.add(norm(f.status));
+    return firstFieldByRegex(
+      record,
+      [
+        /^status$/i,
+        /\bstatus\b/i,
+        /^phase$/i,
+        /workflow/i,
+        /\bstage\b/i,
+        /^state$/i,
+        /\bhealth\b/i,
+        /\bprogress\b/i,
+        /\broadmap\b/i,
+        /\bmilestone\b/i,
+        /\bgate\b/i,
+        /\bdelivery\b/i,
+      ],
+      skip
+    );
+  }
+
+  function resolveOrgRaw(record, cfg) {
+    const f = cfg.fields || {};
+    const hints = cfg._schemaHints;
+    const tryKeys = orderedUniqueFieldKeys([hints && hints.orgField, f.org].filter(Boolean));
+    for (let i = 0; i < tryKeys.length; i++) {
+      const v = cellValue(record, tryKeys[i]);
+      if (v) return v;
+    }
+    const skip = new Set();
+    if (hints && hints.orgField) skip.add(norm(hints.orgField));
+    if (f.org) skip.add(norm(f.org));
+    return firstFieldByRegex(
+      record,
+      [
+        /^org(s)?$/i,
+        /\borg\b/i,
+        /^team$/i,
+        /\bteams\b/i,
+        /\bpillar\b/i,
+        /\bdivision\b/i,
+        /business\s*unit/i,
+        /^bu$/i,
+        /owning/i,
+        /\borgani[sz]ation\b/i,
+        /\bworkstream\b/i,
+        /\bportfolio\b/i,
+        /\bfunction\b/i,
+        /\bstakeholder\b/i,
+      ],
+      skip
+    );
+  }
+
+  function fieldFillCount(records, fieldKey) {
+    if (!fieldKey) return 0;
+    let n = 0;
+    for (let i = 0; i < records.length; i++) {
+      const rec = records[i];
+      if (rec && rec.fields && stringFromAirtableValue(rec.fields[fieldKey]).trim()) n++;
+    }
+    return n;
+  }
+
+  function bestKeyByFill(records, candidateKeys) {
+    let best = '';
+    let bestScore = 0;
+    for (let i = 0; i < candidateKeys.length; i++) {
+      const k = candidateKeys[i];
+      const sc = fieldFillCount(records, k);
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = k;
+      }
+    }
+    return bestScore > 0 ? best : '';
+  }
+
+  /** Column names that usually carry workflow / delivery status (not “last modified”). */
+  function isLikelyStatusColumnName(fieldName) {
+    const n = String(fieldName || '');
+    if (!n) return false;
+    if (/\b(last\s*modified|created\s*time|updated\s*at|modified\s*on|attachment|autonumber|record\s*id)\b/i.test(n))
+      return false;
+    return (
+      /\b(status|phase|stage|state|workflow|progress|roadmap|delivery|health|maturity|gate|milestone|tracker|timeline)\b/i.test(
+        n
+      ) ||
+      /\b(ryg|rag|done|complete|blocked|hold|parked)\b/i.test(n) ||
+      /^(curr(ent)?|pct|percent)\b/i.test(n)
+    );
+  }
+
+  /** Column names that usually carry org / team / pillar (not “country” alone). */
+  function isLikelyOrgColumnName(fieldName) {
+    const n = String(fieldName || '');
+    if (!n) return false;
+    if (/\b(country|nation|postal|zip\s*code|latitude|longitude|email\s*address|phone)\b/i.test(n) && !/\b(team|org)\b/i.test(n))
+      return false;
+    return (
+      /\b(org|orgs|organization|organisation|team|teams|pillar|division|group|squad|stream|workstream|portfolio|lob|chapter|stakeholder|business\s*unit|tiso|domain|function)\b/i.test(
+        n
+      ) ||
+      /^bu$/i.test(n) ||
+      /\b(rto|dric|owner|owners|lead|dl\b|dept|department)\b/i.test(n) ||
+      /\b(oz|iai|mle|dsx|finance|research|tns)\b/i.test(n)
+    );
   }
 
   function norm(s) {
@@ -136,9 +350,23 @@
       .toLowerCase();
   }
 
+  /** Q4 board order (slug keys after mapping). */
+  const ORG_ORDER = ['oz', 'tns-us', 'iai', 'dsx', 'finance', 'mle', 'research'];
+  const ORG_META = {
+    oz: { cls: 'org-oz', label: 'OZ (TnS IL)' },
+    'tns-us': { cls: 'org-tns-us', label: 'TnS US' },
+    iai: { cls: 'org-iai', label: 'IAI' },
+    dsx: { cls: 'org-dsx', label: 'DSX/TISO AI' },
+    finance: { cls: 'org-finance', label: 'Finance' },
+    mle: { cls: 'org-mle', label: 'MLE' },
+    research: { cls: 'org-research', label: 'Research' },
+    unknown: { cls: 'org-unknown', label: 'Unassigned' },
+  };
+
   function orgToSlug(raw, orgSlugMap) {
     const key = norm(raw);
     if (!key) return '';
+    if (key === 'tns il') return 'oz';
     const map = orgSlugMap || {};
     if (map[key]) return map[key];
     for (const k of Object.keys(map)) {
@@ -147,53 +375,87 @@
     return key.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
   }
 
-  function statusClass(status) {
-    const s = norm(status);
-    if (s === 'on track') return 'status-on-track';
-    if (s === 'in progress') return 'status-in-progress';
-    if (s === 'not started') return 'status-not-started';
-    return 'status-unknown';
+  /** Normalized status string from parseRow (lowercased display) — used by filters & stats. */
+  function rowStatusInProgressBucket(s) {
+    const t = norm(s);
+    if (!t) return false;
+    if (t.includes('not started') || t.includes('planned') || t === 'backlog') return false;
+    return (
+      t.includes('track') ||
+      t.includes('progress') ||
+      t.includes('complete') ||
+      t === 'done' ||
+      t.includes('active') ||
+      t.includes('ongoing') ||
+      t.includes('ship') ||
+      t.includes('live')
+    );
   }
 
-  function statusBadgeHtml(status) {
-    const s = norm(status);
-    if (s === 'on track')
-      return '<span class="badge badge-status-on-track">✅ On Track</span>';
-    if (s === 'in progress')
-      return '<span class="badge badge-status-in-progress">🟡 In Progress</span>';
-    if (s === 'not started')
-      return '<span class="badge badge-status-not-started">⭕ Not Started</span>';
-    return '<span class="badge badge-status-unknown">Status TBD</span>';
+  function rowStatusNotStartedBucket(s) {
+    const t = norm(s);
+    return t.includes('not started') || t.includes('planned') || t === 'backlog';
   }
 
-  function priorityBadge(priority) {
+  /** Status pill text matches Q4: raw Airtable label when present. */
+  function statusTagHtml(it) {
+    const disp = String(it.statusDisplay || '').trim();
+    if (!disp) {
+      return '<span class="tag tag-status-unknown">Unknown</span>';
+    }
+    const low = disp.toLowerCase();
+    if (low.includes('not started') || low.includes('not-started') || low === 'planned' || low === 'backlog') {
+      return '<span class="tag tag-status-not-started">' + escapeHtml(disp) + '</span>';
+    }
+    if (
+      low.includes('track') ||
+      low.includes('progress') ||
+      low.includes('complete') ||
+      low === 'done' ||
+      low.includes('active') ||
+      low.includes('ongoing') ||
+      low.includes('ship') ||
+      low.includes('live')
+    ) {
+      return '<span class="tag tag-status-in-progress">' + escapeHtml(disp) + '</span>';
+    }
+    return '<span class="tag tag-status-unknown">' + escapeHtml(disp) + '</span>';
+  }
+
+  function priorityTagHtml(priority) {
     const p = String(priority || '').trim().toUpperCase();
-    if (p === 'P0') return '<span class="badge badge-priority-p0">🔴 P0</span>';
-    if (p === 'P1') return '<span class="badge badge-priority-p1">P1</span>';
-    if (p === 'P2') return '<span class="badge badge-priority-p2">P2</span>';
-    return '';
+    if (!p) return '';
+    const cls = { P0: 'tag-p0', P1: 'tag-p1', P2: 'tag-p2' }[p] || 'tag-source';
+    return '<span class="tag ' + cls + '">' + escapeHtml(p) + '</span>';
   }
 
-  function impactBadge(impact) {
+  function impactTagHtml(impact) {
     const i = norm(impact);
-    if (i === 'high') return '<span class="badge badge-impact-high">💚 High Impact</span>';
-    if (i === 'medium') return '<span class="badge badge-impact-medium">Medium Impact</span>';
-    if (i === 'low') return '<span class="badge badge-impact-low">Low Impact</span>';
-    return '';
+    if (!i) return '';
+    const cls = { high: 'tag-impact-high', medium: 'tag-impact-medium', low: 'tag-impact-low' }[i] || '';
+    const label = i.charAt(0).toUpperCase() + i.slice(1) + ' impact';
+    return cls ? '<span class="tag ' + cls + '">' + escapeHtml(label) + '</span>' : '';
   }
 
   function parseRow(record, cfg) {
     const f = cfg.fields || {};
-    const name = cellValue(record, f.name) || 'Untitled';
-    const desc = cellValue(record, f.description);
-    const status = cellValue(record, f.status) || 'unknown';
-    const priority = cellValue(record, f.priority);
-    const impact = cellValue(record, f.impact);
-    const orgRaw = cellValue(record, f.org);
+    const rk = cfg._resolvedKeys || {};
+    const name = (rk.name && cellValue(record, rk.name)) || resolveName(record, cfg);
+    const desc = (rk.description && cellValue(record, rk.description)) || cellValue(record, f.description);
+    let statusDisplay = '';
+    if (rk.status) statusDisplay = String(cellValue(record, rk.status) || '').trim();
+    if (!statusDisplay) statusDisplay = String(resolveStatusDisplay(record, cfg) || '').trim();
+    const status = norm(statusDisplay) || 'unknown';
+    const priority = (rk.priority && cellValue(record, rk.priority)) || cellValue(record, f.priority);
+    const impact = (rk.impact && cellValue(record, rk.impact)) || cellValue(record, f.impact);
+    let orgRaw = '';
+    if (rk.org) orgRaw = String(cellValue(record, rk.org) || '').trim();
+    if (!orgRaw) orgRaw = String(resolveOrgRaw(record, cfg) || '').trim();
     const orgSlug = orgToSlug(orgRaw, cfg.orgSlugMap);
     let isNew = false;
-    if (f.isNew && record.fields[f.isNew] != null) {
-      const v = record.fields[f.isNew];
+    const isNewField = (rk.isNew && String(rk.isNew).trim()) || f.isNew;
+    if (isNewField && record.fields[isNewField] != null) {
+      const v = record.fields[isNewField];
       if (v === true || v === 'true' || norm(v) === 'yes' || norm(v) === 'new')
         isNew = true;
       if (typeof v === 'object' && v.name && /^(yes|new|true)$/i.test(String(v.name))) isNew = true;
@@ -203,11 +465,13 @@
       id: record.id,
       name,
       desc,
-      status: norm(status) || 'unknown',
+      status,
+      statusDisplay,
       priority: String(priority || '').trim(),
       impact: norm(impact),
       orgSlug,
       orgLabel: orgRaw || orgSlug,
+      source: 'Airtable',
       isNew,
       created,
     };
@@ -258,12 +522,308 @@
     return data.records || [];
   }
 
+  /**
+   * Uses Airtable Metadata API so we always know the table primary field and likely Status / Org columns.
+   * Requires PAT scope: schema.bases:read. Returns null if unavailable (missing scope, CORS, or wrong base).
+   */
+  async function fetchTableSchemaHints(cfg) {
+    const token = normalizeToken(cfg.airtablePat);
+    const baseId = String(cfg.baseId || '').trim();
+    const tableKey = String(cfg.tableName || '').trim();
+    if (!token || !baseId || !tableKey) return null;
+    try {
+      const res = await fetch('https://api.airtable.com/v0/meta/bases/' + encodeURIComponent(baseId) + '/tables', {
+        method: 'GET',
+        mode: 'cors',
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const tables = data.tables || [];
+      const t = findTableDefinition(tables, tableKey);
+      if (!t || !Array.isArray(t.fields)) return null;
+      const fields = t.fields;
+      const primaryField = fields.find(function (fld) {
+        return fld.id === t.primaryFieldId;
+      });
+      const primaryFieldName = primaryField && primaryField.name ? String(primaryField.name) : '';
+
+      const statusTypes = ['singleSelect', 'singleLineText', 'multilineText', 'formula', 'rollup'];
+      const orgTypes = statusTypes.concat(['multipleSelects', 'multipleRecordLinks']);
+
+      const statusField = pickSchemaFieldByName(fields, function (n) {
+        return isLikelyStatusColumnName(n);
+      }, statusTypes);
+
+      const orgField = pickSchemaFieldByName(fields, function (n) {
+        return isLikelyOrgColumnName(n);
+      }, orgTypes);
+
+      return {
+        primaryFieldName: primaryFieldName,
+        statusField: statusField,
+        orgField: orgField,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function findTableDefinition(tables, tableNameOrId) {
+    const raw = String(tableNameOrId || '').trim();
+    if (!raw) return null;
+    if (/^tbl/i.test(raw) && raw.length >= 14) {
+      const byId = tables.find(function (t) {
+        return t.id === raw;
+      });
+      if (byId) return byId;
+    }
+    const want = norm(raw);
+    const exact =
+      tables.find(function (t) {
+        return norm(t.name) === want;
+      }) || null;
+    if (exact) return exact;
+    return (
+      tables.find(function (t) {
+        const n = norm(t.name);
+        return want.length >= 4 && (n.indexOf(want) !== -1 || want.indexOf(n) !== -1);
+      }) || null
+    );
+  }
+
+  function pickSchemaFieldByName(fields, namePredicate, preferredTypes) {
+    const types = preferredTypes || [];
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < fields.length; i++) {
+        const fld = fields[i];
+        const n = fld.name != null ? String(fld.name) : '';
+        if (!n || !namePredicate(n)) continue;
+        if (pass === 0 && types.length && types.indexOf(fld.type) === -1) continue;
+        return n;
+      }
+    }
+    return '';
+  }
+
   function collectFieldKeys(records) {
     const s = new Set();
     records.forEach((r) => {
       Object.keys(r.fields || {}).forEach((k) => s.add(k));
     });
     return [...s];
+  }
+
+  /** Pick Status / Org columns by highest fill among schema + Setup + name-like headers (per load). */
+  function inferStatusOrgColumnsFromRecords(records, cfg) {
+    if (!records || !records.length) return { statusField: '', orgField: '' };
+    const schemaHints = cfg._schemaHints || {};
+    const f = cfg.fields || {};
+    const keys = collectFieldKeys(records);
+    const exclude = new Set();
+    [schemaHints.primaryFieldName, f.name, f.description].forEach(function (x) {
+      if (x) exclude.add(norm(x));
+    });
+
+    const statusCand = keys
+      .filter(function (k) {
+        return !exclude.has(norm(k)) && isLikelyStatusColumnName(k);
+      })
+      .sort(function (a, b) {
+        return a.localeCompare(b);
+      });
+
+    const orgCand = keys
+      .filter(function (k) {
+        return !exclude.has(norm(k)) && isLikelyOrgColumnName(k);
+      })
+      .sort(function (a, b) {
+        return a.localeCompare(b);
+      });
+
+    const statusKeys = orderedUniqueFieldKeys([f.status, schemaHints.statusField].concat(statusCand));
+    const orgKeys = orderedUniqueFieldKeys([f.org, schemaHints.orgField].concat(orgCand));
+
+    return {
+      statusField: bestKeyByFill(records, statusKeys),
+      orgField: bestKeyByFill(records, orgKeys),
+    };
+  }
+
+  /** Map configured / schema label to the exact `fields` key returned by Airtable (case + spacing). */
+  function canonicalKeyInRecords(records, label) {
+    if (!records || !records.length || label == null || String(label).trim() === '') return '';
+    const keys = collectFieldKeys(records);
+    const t = String(label).trim();
+    if (keys.indexOf(t) !== -1) return t;
+    const nt = norm(t);
+    for (let i = 0; i < keys.length; i++) {
+      if (norm(keys[i]) === nt) return keys[i];
+    }
+    return t;
+  }
+
+  function buildExcludeNormSet(cfg) {
+    const ex = new Set();
+    const h = cfg._schemaHints || {};
+    const f = cfg.fields || {};
+    [h.primaryFieldName, f.name, f.description].forEach(function (x) {
+      if (x) ex.add(norm(String(x).trim()));
+    });
+    return ex;
+  }
+
+  function columnMostlyBareLinkedRecordIds(records, fieldKey) {
+    if (!fieldKey || !records.length) return false;
+    let bare = 0;
+    let total = 0;
+    for (let i = 0; i < records.length; i++) {
+      const raw = records[i].fields[fieldKey];
+      if (raw == null || raw === '') continue;
+      total++;
+      if (Array.isArray(raw)) {
+        if (
+          raw.length &&
+          typeof raw[0] === 'object' &&
+          raw[0] &&
+          raw[0].id != null &&
+          raw[0].name == null
+        )
+          bare++;
+        else if (raw.every(function (x) {
+          return typeof x === 'string' && /^rec[a-z0-9]{10,}$/i.test(x);
+        }))
+          bare++;
+      } else if (typeof raw === 'string' && /^rec[a-z0-9]{10,}$/i.test(raw)) bare++;
+    }
+    return total > 0 && bare / total >= 0.55;
+  }
+
+  function isPriorityOnlyColumn(records, fieldKey) {
+    const uniq = new Set();
+    for (let i = 0; i < records.length; i++) {
+      const s = norm(cellValue(records[i], fieldKey));
+      if (s) uniq.add(s);
+    }
+    if (uniq.size === 0 || uniq.size > 8) return false;
+    const arr = Array.from(uniq);
+    return arr.every(function (s) {
+      return /^(p[0-4]|tbd|n\/?a|—|-|none|na)$/i.test(s);
+    });
+  }
+
+  function isJunkFieldNameForValueInfer(k) {
+    return /\b(description|notes|details|summary|comment|attachment|attachments|url|link|photo|image|body|markdown|rich\s*text|json|formula\s*debug)\b/i.test(
+      k
+    );
+  }
+
+  /** When headers do not match heuristics, pick a “select-like” column for status. */
+  function inferStatusColumnByValueShape(records, excludeNorm) {
+    const keys = collectFieldKeys(records);
+    let best = '';
+    let bestScore = -1;
+    const n = records.length;
+    const minRows = n <= 8 ? 1 : Math.max(2, Math.floor(n * 0.1));
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (excludeNorm.has(norm(k)) || isJunkFieldNameForValueInfer(k)) continue;
+      if (columnMostlyBareLinkedRecordIds(records, k)) continue;
+      if (isPriorityOnlyColumn(records, k)) continue;
+      let nonEmpty = 0;
+      const uniq = new Set();
+      let maxLen = 0;
+      for (let j = 0; j < records.length; j++) {
+        const s = cellValue(records[j], k);
+        if (!s) continue;
+        nonEmpty++;
+        uniq.add(norm(s));
+        if (s.length > maxLen) maxLen = s.length;
+      }
+      if (nonEmpty < minRows) continue;
+      const u = uniq.size;
+      if (u < 2 || u > 48) continue;
+      if (maxLen > 72) continue;
+      const score = nonEmpty * 2 + Math.min(u, 14) * 4 - (maxLen > 36 ? 8 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  /** Pick a medium-cardinality text column for org / team when headers are nonstandard. */
+  function inferOrgColumnByValueShape(records, excludeNorm, alsoExcludeKey) {
+    const keys = collectFieldKeys(records);
+    let best = '';
+    let bestScore = -1;
+    const n = records.length;
+    const minRows = n <= 8 ? 1 : Math.max(2, Math.floor(n * 0.08));
+    const skip2 = alsoExcludeKey ? norm(alsoExcludeKey) : '';
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const nk = norm(k);
+      if (excludeNorm.has(nk) || (skip2 && nk === skip2) || isJunkFieldNameForValueInfer(k)) continue;
+      if (columnMostlyBareLinkedRecordIds(records, k)) continue;
+      if (isPriorityOnlyColumn(records, k)) continue;
+      let nonEmpty = 0;
+      const uniq = new Set();
+      let maxLen = 0;
+      for (let j = 0; j < records.length; j++) {
+        const s = cellValue(records[j], k);
+        if (!s) continue;
+        nonEmpty++;
+        uniq.add(norm(s));
+        if (s.length > maxLen) maxLen = s.length;
+      }
+      if (nonEmpty < minRows) continue;
+      const u = uniq.size;
+      if (u < 2 || u > 85) continue;
+      if (maxLen > 140) continue;
+      const score = nonEmpty * 2 + Math.min(u, 40) * 2;
+      if (score > bestScore) {
+        bestScore = score;
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  /** Final per-load keys used for reads (canonical + value-fallback when fill is low). */
+  function buildResolvedFieldKeys(records, cfg) {
+    const f = cfg.fields || {};
+    const h = cfg._schemaHints || {};
+    const exclude = buildExcludeNormSet(cfg);
+    const nrec = records.length;
+    const minFill = nrec <= 8 ? 1 : Math.max(2, Math.floor(nrec * 0.1));
+
+    let statusKey = canonicalKeyInRecords(records, h.statusField || f.status);
+    if (!statusKey || fieldFillCount(records, statusKey) < minFill) {
+      const vb = inferStatusColumnByValueShape(records, exclude);
+      if (vb) statusKey = vb;
+    }
+
+    let orgKey = canonicalKeyInRecords(records, h.orgField || f.org);
+    if (!orgKey || fieldFillCount(records, orgKey) < minFill) {
+      const ex2 = new Set(exclude);
+      if (statusKey) ex2.add(norm(statusKey));
+      const vo = inferOrgColumnByValueShape(records, ex2, statusKey);
+      if (vo) orgKey = vo;
+    }
+
+    return {
+      name: canonicalKeyInRecords(records, h.primaryFieldName || f.name) || String(f.name || '').trim(),
+      description: canonicalKeyInRecords(records, f.description) || String(f.description || '').trim(),
+      status: statusKey,
+      org: orgKey,
+      priority: canonicalKeyInRecords(records, f.priority) || String(f.priority || '').trim(),
+      impact: canonicalKeyInRecords(records, f.impact) || String(f.impact || '').trim(),
+      isNew: (function () {
+        const raw = f.isNew != null ? String(f.isNew).trim() : '';
+        return raw ? canonicalKeyInRecords(records, raw) : '';
+      })(),
+    };
   }
 
   function pickKey(keys, patterns) {
@@ -281,7 +841,11 @@
     if (!keys.length) return null;
     const sample = records[0];
 
+    const nameCandidates = keys.filter((k) =>
+      /\b(name|title|initiative|project|program)\b/i.test(k)
+    );
     const name =
+      bestKeyByFill(records, nameCandidates) ||
       pickKey(keys, [/^name$/i, /^title$/i, /^initiative$/i, /initiative\s*name/i, /^program$/i, /^project$/i]) ||
       keys.find((k) => {
         const v = sample.fields[k];
@@ -305,10 +869,18 @@
         return len > 60 ? best : '';
       })();
 
-    const status = pickKey(keys, [/^status$/i, /^phase$/i, /^state$/i, /workflow/i, /stage$/i]);
+    const statusCandidates = keys.filter((k) => isLikelyStatusColumnName(k));
+    const status =
+      bestKeyByFill(records, statusCandidates) ||
+      pickKey(keys, [/^status$/i, /^phase$/i, /^state$/i, /workflow/i, /stage$/i]);
+
     const priority = pickKey(keys, [/^priority$/i, /^prio$/i]);
     const impact = pickKey(keys, [/^impact$/i, /^severity$/i]);
-    const org = pickKey(keys, [/^org$/i, /^team$/i, /owning/i, /business\s*unit/i, /^pillar$/i, /division/i]);
+
+    const orgCandidates = keys.filter((k) => isLikelyOrgColumnName(k));
+    const org =
+      bestKeyByFill(records, orgCandidates) ||
+      pickKey(keys, [/^org$/i, /^team$/i, /owning/i, /business\s*unit/i, /^pillar$/i, /division/i]);
 
     let isNew = pickKey(keys, [/^new$/i, /^is\s*new$/i, /new\s*initiative/i]);
     if (!isNew) {
@@ -330,16 +902,6 @@
     };
   }
 
-  const ORG_META = {
-    oz: { title: 'OZ (TnS IL)', dot: 'dot-oz' },
-    'tns-us': { title: 'TnS US', dot: 'dot-tns-us' },
-    iai: { title: 'IAI', dot: 'dot-iai' },
-    dsx: { title: 'DSX/TISO AI', dot: 'dot-dsx' },
-    finance: { title: 'Finance', dot: 'dot-finance' },
-    mle: { title: 'MLE', dot: 'dot-mle' },
-    research: { title: 'Research', dot: 'dot-research' },
-  };
-
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -351,23 +913,32 @@
   function renderCards(items) {
     return items
       .map((it) => {
-        const stClass = statusClass(it.status);
         const dataName = escapeHtml(norm(it.name));
-        const nameNew = it.isNew ? ' <span class="badge badge-new">🆕 New</span>' : '';
-        const tags = [statusBadgeHtml(it.status), priorityBadge(it.priority), impactBadge(it.impact)]
+        const badges = [statusTagHtml(it), priorityTagHtml(it.priority), impactTagHtml(it.impact)]
           .filter(Boolean)
           .join('');
-        return `<div class="card ${stClass}" data-name="${dataName}" data-status="${escapeHtml(
-          it.status
-        )}" data-priority="${escapeHtml(it.priority)}" data-impact="${escapeHtml(
-          it.impact
-        )}" data-org="${escapeHtml(it.orgSlug)}">
-        <div class="card-name">${escapeHtml(it.name)}${nameNew}</div>
-        <div class="card-desc">${escapeHtml(it.desc || '—')}</div>
-        <div class="card-tags">${tags}</div>
+        const sourceLabel = escapeHtml(it.source || 'Airtable');
+        const descBlock = it.desc
+          ? `<div class="card-desc">${escapeHtml(it.desc)}</div>`
+          : '';
+        return `<div class="card" data-name="${dataName}" data-status="${escapeHtml(it.status)}" data-priority="${escapeHtml(
+          it.priority
+        )}" data-impact="${escapeHtml(it.impact)}">
+        <div class="card-title">${escapeHtml(it.name)}</div>
+        ${descBlock}
+        <div class="card-footer">
+          <div class="card-badges">${badges}</div>
+          <span class="card-source">${sourceLabel}</span>
+        </div>
       </div>`;
       })
       .join('');
+  }
+
+  function slugSectionLabel(slug) {
+    return String(slug || '')
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   function renderMain(rows, cfg) {
@@ -378,74 +949,62 @@
       if (!byOrg[slug]) byOrg[slug] = [];
       byOrg[slug].push(it);
     });
-    const slugOrder = Object.keys(ORG_META);
-    const extra = Object.keys(byOrg).filter((k) => slugOrder.indexOf(k) === -1).sort();
-    const orderedSlugs = slugOrder.concat(extra);
+    const extraRaw = Object.keys(byOrg).filter(function (k) {
+      return ORG_ORDER.indexOf(k) === -1;
+    });
+    const rest = extraRaw
+      .filter(function (k) {
+        return k !== 'unknown';
+      })
+      .sort();
+    const orderedSlugs = ORG_ORDER.concat(rest);
+    if (extraRaw.indexOf('unknown') !== -1) orderedSlugs.push('unknown');
 
     let html = '';
-    const now = Date.now();
-    const dayAgo = now - 24 * 60 * 60 * 1000;
-    const recent = parsed.filter((it) => it.created && it.created.getTime() >= dayAgo);
-    if (recent.length) {
-      const lis = recent
-        .slice(0, 24)
-        .map((it) => `<li>${escapeHtml(it.name)} — ${escapeHtml(it.orgLabel)}${it.isNew ? ' [New]' : ''}</li>`)
-        .join('');
-      html += `<div class="update-banner" id="update-banner">
-        <div class="icon">🔄</div>
-        <div style="flex:1">
-          <h3>Added or seen in the last 24 hours — ${recent.length} record(s)</h3>
-          <ul>${lis}</ul>
-        </div>
-      </div>`;
-    }
-
     orderedSlugs.forEach((slug) => {
       const items = byOrg[slug];
       if (!items || !items.length) return;
-      const meta = ORG_META[slug] || { title: slug, dot: 'dot-oz' };
-      html += `<div class="org-section" data-org="${escapeHtml(slug)}">
-        <div class="org-header">
-          <div class="org-dot ${meta.dot}"></div>
-          <div class="org-title">${escapeHtml(meta.title)}</div>
-          <div class="org-count">${items.length} initiative${items.length === 1 ? '' : 's'}</div>
-        </div>
-        <div class="cards-grid">${renderCards(items)}</div>
+      const meta = ORG_META[slug] || { cls: 'org-unknown', label: slugSectionLabel(slug) };
+      const countLabel = `${items.length} initiative${items.length === 1 ? '' : 's'}`;
+      html += `<div class="org-section ${meta.cls}" data-org="${escapeHtml(slug)}">
+        <h2>
+          ${escapeHtml(meta.label)}
+          <span class="count">${countLabel}</span>
+        </h2>
+        <div class="cards">${renderCards(items)}</div>
       </div>`;
     });
 
-    html += `<div class="no-results hidden" id="no-results">
-    <p style="font-size: 32px; margin-bottom: 12px;">🔍</p>
-    <p style="font-size: 16px; font-weight: 600; color: #475569;">No initiatives match your filters</p>
-    <p style="font-size: 13px; margin-top: 6px;">Try adjusting your filters or <a href="#" onclick="resetFilters(); return false;" style="color: #3b82f6;">reset all filters</a></p>
-  </div>`;
+    html += `<p class="empty hidden" id="no-results" style="padding:24px 0;text-align:center">No initiatives match your filters.</p>`;
 
     return html;
   }
 
   function computeStats(parsed) {
     const total = parsed.length;
-    const onTrack = parsed.filter((p) => p.status === 'on track' || p.status === 'in progress').length;
-    const notStarted = parsed.filter((p) => p.status === 'not started').length;
+    const onTrack = parsed.filter((p) => rowStatusInProgressBucket(p.status)).length;
+    const notStarted = parsed.filter((p) => rowStatusNotStartedBucket(p.status)).length;
     const p0 = parsed.filter((p) => String(p.priority).toUpperCase() === 'P0').length;
     const high = parsed.filter((p) => p.impact === 'high').length;
-    const orgs = new Set(parsed.map((p) => p.orgSlug).filter(Boolean));
-    return { total, onTrack, notStarted, p0, high, activeOrgs: orgs.size };
+    const activeOrgs = ORG_ORDER.filter((slug) => parsed.some((p) => p.orgSlug === slug)).length;
+    return { total, onTrack, notStarted, p0, high, activeOrgs };
   }
 
   function updateStats(parsed) {
     const s = computeStats(parsed);
-    const set = (id, v) => {
+    const setNum = (id, val, color) => {
       const el = document.getElementById(id);
-      if (el) el.textContent = String(v);
+      if (!el) return;
+      el.textContent = String(val);
+      if (color) el.style.color = color;
+      else el.style.removeProperty('color');
     };
-    set('stat-ontrack', s.onTrack);
-    set('stat-notstarted', s.notStarted);
-    set('stat-p0', s.p0);
-    set('stat-high', s.high);
-    set('stat-orgs', s.activeOrgs);
-    const tc = document.getElementById('total-count');
-    if (tc) tc.textContent = String(s.total);
+    setNum('total-count', s.total, '#0969da');
+    setNum('stat-inprog', s.onTrack, '#065f46');
+    setNum('stat-notstarted', s.notStarted, '#6c757d');
+    setNum('stat-p0', s.p0, '#dc2626');
+    setNum('stat-high', s.high, '#15803d');
+    setNum('stat-orgs', s.activeOrgs, '#0969da');
   }
 
   function setLoading(msg) {
@@ -466,7 +1025,7 @@
     el.innerHTML = `<div style="padding:32px;margin:24px 32px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;color:#991b1b;font-size:14px;">
       <strong>Could not load data</strong><p style="margin-top:8px;line-height:1.5;">${escapeHtml(msg)}</p>
       ${authHint}
-      <p style="margin-top:12px;font-size:13px;color:#7f1d1d;">Check Personal Access Token scopes (data.records:read), base id, and table name. Open setup below if you need to change credentials.</p>
+      <p style="margin-top:12px;font-size:13px;color:#7f1d1d;">Check Personal Access Token scopes (<strong>data.records:read</strong> required; add <strong>schema.bases:read</strong> so the dashboard can read your table’s primary field and column names automatically). Check base id and table name. Open setup below if you need to change credentials.</p>
       <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:10px;">
         <button type="button" class="reset-btn" onclick="window.__openDashboardSetup()">Open setup</button>
         <button type="button" class="reset-btn" onclick="window.__clearDashboardConnection()">Clear saved connection &amp; reload</button>
@@ -478,14 +1037,20 @@
   let lastParsed = [];
 
   async function refresh() {
-    const cfg = loadMergedConfig();
+    const cfg = Object.assign({}, loadMergedConfig());
     if (!cfg.airtablePat || !cfg.baseId || !cfg.tableName) {
       setError('Missing Airtable configuration. Use Setup to add your token and base id.');
       return;
     }
     setLoading('Loading from Airtable…');
     try {
+      const schemaHints = (await fetchTableSchemaHints(cfg)) || {};
+      cfg._schemaHints = schemaHints;
       const records = await fetchAllRecords(cfg);
+      const inferred = inferStatusOrgColumnsFromRecords(records, cfg);
+      if (inferred.statusField) cfg._schemaHints.statusField = inferred.statusField;
+      if (inferred.orgField) cfg._schemaHints.orgField = inferred.orgField;
+      cfg._resolvedKeys = buildResolvedFieldKeys(records, cfg);
       const parsed = records.map((r) => parseRow(r, cfg));
       lastParsed = parsed;
       const mount = document.getElementById('dashboard-mount');
@@ -594,15 +1159,27 @@
       const old = btn.textContent;
       btn.textContent = 'Detecting…';
       try {
-        const records = await fetchSampleRecords(
-          { airtablePat: pat, baseId, tableName, viewName },
-          10
-        );
+        const tmpCfg = Object.assign({}, loadMergedConfig(), {
+          airtablePat: pat,
+          baseId: baseId,
+          tableName: tableName,
+          viewName: viewName,
+        });
+        const schemaHints = (await fetchTableSchemaHints(tmpCfg)) || {};
+        tmpCfg._schemaHints = schemaHints;
+        const records = await fetchSampleRecords(tmpCfg, 30);
         const guessed = guessFieldMappingFromRecords(records);
         if (!guessed) {
           window.alert('No fields found in sample rows. Check table name and view.');
           return;
         }
+        if (schemaHints.primaryFieldName) guessed.name = schemaHints.primaryFieldName;
+        tmpCfg.fields = Object.assign({}, DEFAULT_FIELDS, guessed);
+        const inferred = inferStatusOrgColumnsFromRecords(records, tmpCfg);
+        if (inferred.statusField) guessed.status = inferred.statusField;
+        else if (schemaHints.statusField) guessed.status = schemaHints.statusField;
+        if (inferred.orgField) guessed.org = inferred.orgField;
+        else if (schemaHints.orgField) guessed.org = schemaHints.orgField;
         document.getElementById('setup-f-name').value = guessed.name;
         document.getElementById('setup-f-description').value = guessed.description;
         document.getElementById('setup-f-status').value = guessed.status;
@@ -610,12 +1187,16 @@
         document.getElementById('setup-f-impact').value = guessed.impact;
         document.getElementById('setup-f-org').value = guessed.org;
         document.getElementById('setup-f-isNew').value = guessed.isNew;
-        window.alert(
+        let msg =
           'Filled best guesses for column names. Review them, adjust if needed, then click Save & load.\n\nGuessed:\n' +
-            Object.entries(guessed)
-              .map(([k, v]) => k + ' → ' + v)
-              .join('\n')
-        );
+          Object.entries(guessed)
+            .map(([k, v]) => k + ' → ' + v)
+            .join('\n');
+        if (!schemaHints) {
+          msg +=
+            '\n\nNote: Schema API was not used (add PAT scope schema.bases:read in Airtable → Developer hub → your token → scopes). With that scope, the primary field and Status/Org columns are detected automatically from the base.';
+        }
+        window.alert(msg);
       } catch (e) {
         window.alert('Could not auto-detect: ' + (e.message || String(e)));
       } finally {
@@ -667,12 +1248,46 @@
     window.__closeDashboardSetup = close;
   }
 
+  function getFilterState() {
+    const g = (id) => {
+      const el = document.getElementById(id);
+      return el ? String(el.value) : '';
+    };
+    return {
+      status: g('filterStatus'),
+      priority: g('filterPriority'),
+      impact: norm(g('filterImpact')),
+      search: norm(g('searchBox')),
+    };
+  }
+
+  function itemMatchesFilters(it, st) {
+    if (st.status === 'In progress') {
+      if (!rowStatusInProgressBucket(it.status)) return false;
+    }
+    if (st.status === 'Not started') {
+      if (!rowStatusNotStartedBucket(it.status)) return false;
+    }
+    if (st.priority && String(it.priority).trim() !== st.priority) return false;
+    if (st.impact && (it.impact || '') !== st.impact) return false;
+    if (st.search && !norm(it.name).includes(st.search)) return false;
+    return true;
+  }
+
+  function visibleParsed() {
+    const st = getFilterState();
+    return lastParsed.filter((it) => itemMatchesFilters(it, st));
+  }
+
   window.resetFilters = function resetFilters() {
-    document.getElementById('filter-status').value = '';
-    document.getElementById('filter-priority').value = '';
-    document.getElementById('filter-impact').value = '';
-    document.getElementById('filter-org').value = '';
-    document.getElementById('search-box').value = '';
+    const fs = document.getElementById('filterStatus');
+    const fp = document.getElementById('filterPriority');
+    const fi = document.getElementById('filterImpact');
+    const sb = document.getElementById('searchBox');
+    if (fs) fs.value = '';
+    if (fp) fp.value = '';
+    if (fi) fi.value = '';
+    if (sb) sb.value = '';
     document.querySelectorAll('.card').forEach((c) => c.classList.remove('hidden'));
     document.querySelectorAll('.org-section').forEach((s) => s.classList.remove('hidden'));
     const nr = document.getElementById('no-results');
@@ -686,50 +1301,37 @@
   };
 
   window.applyFilters = function applyFilters() {
-    const statusFilter = document.getElementById('filter-status').value.toLowerCase();
-    const priorityFilter = document.getElementById('filter-priority').value;
-    const impactFilter = document.getElementById('filter-impact').value.toLowerCase();
-    const orgFilter = document.getElementById('filter-org').value.toLowerCase();
-    const searchText = document.getElementById('search-box').value.toLowerCase().trim();
-
-    let totalVisible = 0;
+    const st = getFilterState();
 
     document.querySelectorAll('.org-section').forEach((section) => {
-      const sectionOrg = section.getAttribute('data-org');
       let sectionVisible = 0;
-
       section.querySelectorAll('.card').forEach((card) => {
         const cardName = card.getAttribute('data-name') || '';
-        const cardStatus = card.getAttribute('data-status') || '';
+        const cardStatus = (card.getAttribute('data-status') || '').toLowerCase();
         const cardPriority = card.getAttribute('data-priority') || '';
-        const cardImpact = card.getAttribute('data-impact') || '';
-        const cardDesc = card.querySelector('.card-desc')
-          ? card.querySelector('.card-desc').textContent.toLowerCase()
-          : '';
+        const cardImpact = (card.getAttribute('data-impact') || '').toLowerCase();
 
         let show = true;
-
-        if (statusFilter && cardStatus !== statusFilter) show = false;
-        if (priorityFilter && cardPriority !== priorityFilter) show = false;
-        if (impactFilter && cardImpact !== impactFilter) show = false;
-        if (orgFilter && sectionOrg !== orgFilter) show = false;
-        if (searchText && !cardName.includes(searchText) && !cardDesc.includes(searchText)) show = false;
+        if (st.status === 'In progress') {
+          if (!rowStatusInProgressBucket(cardStatus)) show = false;
+        }
+        if (st.status === 'Not started') {
+          if (!rowStatusNotStartedBucket(cardStatus)) show = false;
+        }
+        if (st.priority && cardPriority !== st.priority) show = false;
+        if (st.impact && cardImpact !== st.impact) show = false;
+        if (st.search && !cardName.includes(st.search)) show = false;
 
         card.classList.toggle('hidden', !show);
-        if (show) {
-          sectionVisible++;
-          totalVisible++;
-        }
+        if (show) sectionVisible++;
       });
-
-      const orgMatch = !orgFilter || sectionOrg === orgFilter;
-      section.classList.toggle('hidden', !orgMatch || sectionVisible === 0);
+      section.classList.toggle('hidden', sectionVisible === 0);
     });
 
+    const vis = visibleParsed();
     const nr = document.getElementById('no-results');
-    if (nr) nr.classList.toggle('hidden', totalVisible > 0);
-    const tc = document.getElementById('total-count');
-    if (tc) tc.textContent = String(totalVisible);
+    if (nr) nr.classList.toggle('hidden', vis.length > 0);
+    updateStats(vis);
   };
 
   window.__refreshDashboard = function () {

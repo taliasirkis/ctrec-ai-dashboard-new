@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Q4 FY26 — CTREC AI Initiatives Dashboard</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --border: #e1e4e8;
+    --text: #24292f;
+    --muted: #57606a;
+    --accent: #0969da;
+
+    --oz:       #d4edda; --oz-text:       #155724; --oz-border:   #28a745;
+    --tns-us:   #fff3cd; --tns-us-text:   #856404; --tns-us-border:#ffc107;
+    --iai:      #cce5ff; --iai-text:      #004085; --iai-border:  #007bff;
+    --dsx:      #e2d9f3; --dsx-text:      #432874; --dsx-border:  #6f42c1;
+    --finance:  #f8d7da; --finance-text:  #721c24; --finance-border:#dc3545;
+    --mle:      #d6eaf8; --mle-text:      #154360; --mle-border:  #2e86c1;
+    --research: #fce8d5; --research-text: #7d3c0e; --research-border:#e67e22;
+
+    --on-track:   #28a745;
+    --in-progress:#fd7e14;
+    --not-started:#6c757d;
+    --p0: #dc3545;
+    --p1: #fd7e14;
+    --p2: #0969da;
+    --high-impact:#16a34a;
+    --med-impact: #ca8a04;
+    --low-impact: #94a3b8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  header {
+    background: linear-gradient(135deg, #1a1f36 0%, #2d3561 100%);
+    color: #fff;
+    padding: 28px 36px 24px;
+  }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+  header p  { font-size: 13px; opacity: .7; margin-top: 4px; }
+
+  .summary-bar {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 20px 36px;
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 90px;
+    padding: 12px 18px;
+    border-radius: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .stat .num { font-size: 26px; font-weight: 700; color: var(--accent); }
+  .stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-top: 2px; }
+
+  .controls {
+    padding: 16px 36px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .controls label { font-size: 12px; font-weight: 600; color: var(--muted); margin-right: 4px; }
+  select, input[type=text] {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  main { padding: 0 36px 48px; }
+
+  .org-section { margin-bottom: 32px; }
+  .org-section h2 {
+    font-size: 15px;
+    font-weight: 700;
+    padding: 10px 16px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-left: 4px solid;
+  }
+  .org-section h2 .count {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(0,0,0,.12);
+  }
+
+  .org-oz      h2 { background: var(--oz);      color: var(--oz-text);      border-color: var(--oz-border); }
+  .org-tns-us  h2 { background: var(--tns-us);  color: var(--tns-us-text);  border-color: var(--tns-us-border); }
+  .org-iai     h2 { background: var(--iai);     color: var(--iai-text);     border-color: var(--iai-border); }
+  .org-dsx     h2 { background: var(--dsx);     color: var(--dsx-text);     border-color: var(--dsx-border); }
+  .org-finance h2 { background: var(--finance); color: var(--finance-text); border-color: var(--finance-border); }
+  .org-mle     h2 { background: var(--mle);     color: var(--mle-text);     border-color: var(--mle-border); }
+  .org-research h2{ background: var(--research);color: var(--research-text);border-color: var(--research-border); }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    padding: 14px 0;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: box-shadow .15s;
+  }
+  .card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.1); }
+
+  .card-title {
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .card-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  .tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .tag-status-on-track   { background: #d1fae5; color: #065f46; }
+  .tag-status-in-progress{ background: #ffedd5; color: #9a3412; }
+  .tag-status-not-started{ background: #f1f5f9; color: #475569; }
+  .tag-status-unknown    { background: #f1f5f9; color: #94a3b8; }
+
+  .tag-p0 { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+  .tag-p1 { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+  .tag-p2 { background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; }
+
+  .tag-impact-high   { background: #dcfce7; color: #15803d; }
+  .tag-impact-medium { background: #fef9c3; color: #854d0e; }
+  .tag-impact-low    { background: #f1f5f9; color: #64748b; }
+
+  .tag-source { background: #f3f4f6; color: #6b7280; font-style: italic; }
+
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 36px 0;
+    font-size: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot  { width: 10px; height: 10px; border-radius: 50%; }
+
+  @media (max-width: 640px) {
+    header, .summary-bar, .controls, main, .legend { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Q4 FY26 — CTREC AI Initiatives Dashboard</h1>
+  <p>Source: CTREC AI Program Binder · Quarterly Planning Board + Initiatives - Q4 table · Generated April 2026</p>
+</header>
+
+<div class="summary-bar" id="summaryBar">
+  <!-- filled by JS -->
+</div>
+
+<div class="legend">
+  <strong style="margin-right:4px">Status:</strong>
+  <div class="legend-item"><div class="legend-dot" style="background:#065f46"></div> On Track / In Progress</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#475569"></div> Not Started</div>
+  &nbsp;&nbsp;
+  <strong style="margin-right:4px">Priority:</strong>
+  <div class="legend-item"><span class="tag tag-p0">P0</span></div>
+  <div class="legend-item"><span class="tag tag-p1">P1</span></div>
+  <div class="legend-item"><span class="tag tag-p2">P2</span></div>
+  &nbsp;&nbsp;
+  <strong style="margin-right:4px">Impact:</strong>
+  <div class="legend-item"><span class="tag tag-impact-high">High</span></div>
+  <div class="legend-item"><span class="tag tag-impact-medium">Medium</span></div>
+  <div class="legend-item"><span class="tag tag-impact-low">Low</span></div>
+</div>
+
+<div class="controls">
+  <div>
+    <label>Filter by status:</label>
+    <select id="filterStatus">
+      <option value="">All</option>
+      <option value="In progress">In Progress / On Track</option>
+      <option value="Not started">Not Started</option>
+    </select>
+  </div>
+  <div>
+    <label>Filter by priority:</label>
+    <select id="filterPriority">
+      <option value="">All</option>
+      <option value="P0">P0</option>
+      <option value="P1">P1</option>
+      <option value="P2">P2</option>
+    </select>
+  </div>
+  <div>
+    <label>Filter by impact:</label>
+    <select id="filterImpact">
+      <option value="">All</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+  </div>
+  <div>
+    <label>Search:</label>
+    <input type="text" id="searchBox" placeholder="Initiative name…" style="width:220px" />
+  </div>
+</div>
+
+<main id="main"></main>
+
+<script>
+// ── Raw data ──────────────────────────────────────────────────────────────────
+// Combined from Quarterly Planning Board (Q4) + Initiatives-Q4 (Q4 FY26)
+// Deduplication: prefer Initiatives-Q4 entry when name matches (has richer priority/status)
+
+const initiatives = [
+  // ── From Initiatives - Q4 table (Q4 FY26 only) ───────────────────────────
+  {
+    name: "ASRA NRT V2/V3",
+    desc: "ATO model improvements, carry-over from Q3.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P0",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "SPEAR",
+    desc: "ATO agent — continued from Q3. Multi-quarter agent project for ATO detection and response.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P0",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Investigator Assist + MC Support",
+    desc: "Investigation automation and Mailchimp support extension. Carry-over from Q3.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P1",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "FRESH V3 + FRESH Anomalies",
+    desc: "Next-gen FRESH model after Rapid completion. Includes anomaly detection capabilities.",
+    orgs: ["OZ"],
+    status: "Not started",
+    priority: "P1",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Poli Agent v2",
+    desc: "Follow-on from Poli Agent v1 (Done Q2). Enhanced policy agent capabilities.",
+    orgs: ["OZ"],
+    status: "Not started",
+    priority: "P1",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "SMS Pumping Model — Online",
+    desc: "Follow-on from Q3 offline model completion. Deploy online real-time SMS pumping detection.",
+    orgs: ["OZ"],
+    status: "Not started",
+    priority: "P1",
+    impact: "medium",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Policy Drift & On-Call Agent",
+    desc: "Policy tools and on-call agent, carry-over from Q3.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P1",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "AOF On-Call Agent",
+    desc: "New for Q4. Agent to assist AOF on-call operations, improve dwell time.",
+    orgs: ["OZ"],
+    status: "Not started",
+    priority: "P1",
+    impact: null,
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "RAMP (MPU Model)",
+    desc: "Continued from Q3. Research phase done, productionization expected to take ~half of Q4.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P1",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Unified Phishing Model",
+    desc: "Consolidate phishing detection across products into a single unified model.",
+    orgs: ["OZ"],
+    status: "Not started",
+    priority: "P1",
+    impact: "high",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Ops Assist Evaluation",
+    desc: "Continue in low capacity. Evaluate agent-based ops assist tooling.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P2",
+    impact: "medium",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Rulex — VerifierProtocol checkpoint",
+    desc: "Add VerifierProtocol checkpoint to Rulex. MLE only — no DS effort.",
+    orgs: ["OZ", "MLE"],
+    status: "Not started",
+    priority: "P2",
+    impact: "low",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "AI Skills Measurement",
+    desc: "Framework for measuring AI skill impact and justifying HC vs. agent tradeoffs.",
+    orgs: ["OZ"],
+    status: "Not started",
+    priority: "P2",
+    impact: "medium",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Hermes Device",
+    desc: "Continue low effort from Q3. ATO device entity model.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P2",
+    impact: "medium",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "Device/Session Embedding Research",
+    desc: "Research into embedding approaches for device and session entities to improve ATO detection.",
+    orgs: ["OZ", "Research"],
+    status: "Not started",
+    priority: "P2",
+    impact: "low",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "OZ Metrics",
+    desc: "Continue in low capacity. Team-level metrics tracking and dashboards.",
+    orgs: ["OZ"],
+    status: "In progress",
+    priority: "P2",
+    impact: "medium",
+    source: "Initiatives-Q4"
+  },
+  {
+    name: "All Models Calibration + Retrain",
+    desc: "Collaboration with US team. Calibrate and retrain all models for consistency.",
+    orgs: ["OZ", "TnS US"],
+    status: "Not started",
+    priority: "P2",
+    impact: "medium",
+    source: "Initiatives-Q4"
+  },
+  // ── Finance ───────────────────────────────────────────────────────────────
+  {
+    name: "TBD — Finance Initiative",
+    desc: "Initiative name pending. Record exists in Airtable with Q4 quarter assigned to Finance.",
+    orgs: ["Finance"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+  // ── From Quarterly Planning Board (Q4, no Initiatives-Q4 duplicate) ───────
+  {
+    name: "SAU V2",
+    desc: null,
+    orgs: ["TnS IL"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+  {
+    name: "Oz/BLADE Integrated ATO model (based on ATOMIX model)",
+    desc: "Develop an ATO nRT model that combines features from RSS and in-product API activity. MLE resources needed.",
+    orgs: ["TnS IL", "DSX/TISO AI"],
+    status: null,
+    priority: null,
+    impact: "high",
+    source: "Qtrly Board"
+  },
+  {
+    name: "AMM V2",
+    desc: null,
+    orgs: ["TnS IL"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+  {
+    name: "DTOM",
+    desc: null,
+    orgs: ["TnS IL"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+  {
+    name: "Calibration + Auto retrain/Rapid",
+    desc: null,
+    orgs: ["TnS IL"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+  {
+    name: "Risk registry prioritization",
+    desc: "Predicts the priority of a new alert for analysts. Finds FPs. Business KPI: False Positive Rate from 60%→30% (DLP), <20% (SIEM).",
+    orgs: ["IAI"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+  {
+    name: "Assist tool",
+    desc: "SPEAR, Mailchimp, SIRT, Tax assist tooling (multi-quarter).",
+    orgs: ["IAI"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+  {
+    name: "Champions, mentoring, AI community",
+    desc: "Regular meetings, learn pain points, start new op mechs.",
+    orgs: ["IAI"],
+    status: null,
+    priority: null,
+    impact: null,
+    source: "Qtrly Board"
+  },
+];
+
+// ── Org metadata ──────────────────────────────────────────────────────────────
+const orgMeta = {
+  "OZ":          { cls: "org-oz",       label: "OZ (TnS IL)" },
+  "TnS IL":      { cls: "org-oz",       label: "TnS IL" },
+  "TnS US":      { cls: "org-tns-us",   label: "TnS US" },
+  "IAI":         { cls: "org-iai",      label: "IAI" },
+  "DSX/TISO AI": { cls: "org-dsx",      label: "DSX/TISO AI" },
+  "Finance":     { cls: "org-finance",  label: "Finance" },
+  "MLE":         { cls: "org-mle",      label: "MLE" },
+  "Research":    { cls: "org-research", label: "Research" },
+};
+
+// Normalise org names (OZ and TnS IL treated as same bucket for display)
+function normaliseOrg(o) {
+  if (o === "TnS IL") return "OZ";
+  return o;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function statusTag(s) {
+  if (!s) return `<span class="tag tag-status-unknown">Unknown</span>`;
+  if (s.toLowerCase().includes("track") || s.toLowerCase().includes("progress"))
+    return `<span class="tag tag-status-in-progress">${s}</span>`;
+  if (s.toLowerCase().includes("not started"))
+    return `<span class="tag tag-status-not-started">${s}</span>`;
+  return `<span class="tag tag-status-unknown">${s}</span>`;
+}
+
+function priorityTag(p) {
+  if (!p) return "";
+  const cls = { P0: "tag-p0", P1: "tag-p1", P2: "tag-p2" }[p] || "tag-source";
+  return `<span class="tag ${cls}">${p}</span>`;
+}
+
+function impactTag(i) {
+  if (!i) return "";
+  const cls = { high: "tag-impact-high", medium: "tag-impact-medium", low: "tag-impact-low" }[i.toLowerCase()] || "";
+  return `<span class="tag ${cls}">${i.charAt(0).toUpperCase() + i.slice(1)} impact</span>`;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const statusF   = document.getElementById("filterStatus").value;
+  const priorityF = document.getElementById("filterPriority").value;
+  const impactF   = document.getElementById("filterImpact").value;
+  const searchF   = document.getElementById("searchBox").value.toLowerCase();
+
+  // Collect all unique orgs across visible initiatives
+  const orgOrder = ["OZ", "TnS US", "IAI", "DSX/TISO AI", "Finance", "MLE", "Research"];
+  const byOrg = {};
+  orgOrder.forEach(o => byOrg[o] = []);
+
+  let total = 0, inProgress = 0, notStarted = 0, p0Count = 0, highCount = 0;
+
+  initiatives.forEach(ini => {
+    // Filters
+    if (statusF) {
+      const s = (ini.status || "").toLowerCase();
+      if (statusF === "In progress" && !s.includes("track") && !s.includes("progress")) return;
+      if (statusF === "Not started" && !s.includes("not started")) return;
+    }
+    if (priorityF && ini.priority !== priorityF) return;
+    if (impactF && (ini.impact || "").toLowerCase() !== impactF.toLowerCase()) return;
+    if (searchF && !(ini.name || "").toLowerCase().includes(searchF)) return;
+
+    // Assign to orgs
+    const assigned = new Set();
+    ini.orgs.forEach(o => {
+      const norm = normaliseOrg(o);
+      if (!assigned.has(norm)) {
+        assigned.add(norm);
+        if (byOrg[norm]) byOrg[norm].push(ini);
+        else byOrg[norm] = [ini];
+      }
+    });
+
+    total++;
+    if ((ini.status || "").toLowerCase().includes("progress") || (ini.status || "").toLowerCase().includes("track")) inProgress++;
+    if ((ini.status || "").toLowerCase().includes("not started")) notStarted++;
+    if (ini.priority === "P0") p0Count++;
+    if ((ini.impact || "").toLowerCase() === "high") highCount++;
+  });
+
+  // Summary bar
+  document.getElementById("summaryBar").innerHTML = `
+    <div class="stat"><div class="num">${total}</div><div class="lbl">Initiatives</div></div>
+    <div class="stat"><div class="num" style="color:#065f46">${inProgress}</div><div class="lbl">In Progress</div></div>
+    <div class="stat"><div class="num" style="color:#6c757d">${notStarted}</div><div class="lbl">Not Started</div></div>
+    <div class="stat"><div class="num" style="color:#dc2626">${p0Count}</div><div class="lbl">P0 Items</div></div>
+    <div class="stat"><div class="num" style="color:#15803d">${highCount}</div><div class="lbl">High Impact</div></div>
+    <div class="stat"><div class="num">${orgOrder.filter(o => byOrg[o] && byOrg[o].length > 0).length}</div><div class="lbl">Orgs Active</div></div>
+  `;
+
+  // Sections
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+
+  orgOrder.forEach(org => {
+    const items = byOrg[org] || [];
+    if (items.length === 0) return;
+
+    const meta = orgMeta[org] || { cls: "org-oz", label: org };
+
+    const cards = items.map(ini => `
+      <div class="card">
+        <div class="card-title">${ini.name || "<em>Unnamed</em>"}</div>
+        ${ini.desc ? `<div class="card-desc">${ini.desc}</div>` : ""}
+        <div class="card-tags">
+          ${statusTag(ini.status)}
+          ${priorityTag(ini.priority)}
+          ${impactTag(ini.impact)}
+          <span class="tag tag-source">${ini.source}</span>
+        </div>
+      </div>
+    `).join("");
+
+    main.innerHTML += `
+      <div class="org-section ${meta.cls}">
+        <h2>
+          ${meta.label}
+          <span class="count">${items.length} initiative${items.length !== 1 ? "s" : ""}</span>
+        </h2>
+        <div class="cards">${cards}</div>
+      </div>
+    `;
+  });
+
+  if (main.innerHTML === "") {
+    main.innerHTML = `<p class="empty" style="padding:24px 0">No initiatives match the current filters.</p>`;
+  }
+}
+
+document.getElementById("filterStatus").addEventListener("change", render);
+document.getElementById("filterPriority").addEventListener("change", render);
+document.getElementById("filterImpact").addEventListener("change", render);
+document.getElementById("searchBox").addEventListener("input", render);
+
+render();
+</script>
+</body>
+</html>

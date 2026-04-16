@@ -12,3 +12,8 @@
 #     'https://api.airtable.com/v0/appZ1At3HCUjFXSsA/tblIGxyi4yVtzbPB3?maxRecords=1'
 #
 # When curl returns "records" with no error, paste the same PAT in the dashboard Setup.
+#
+# Dashboard (optional): in Airtable → Developer hub → your token → add scope
+#   schema.bases:read
+# so the app can read which column is the table “primary field” and map titles/status/org
+# without you typing every column name. data.records:read is still required for data.
