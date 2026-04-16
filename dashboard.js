@@ -426,7 +426,7 @@
     overlay.className = 'hidden';
     overlay.style.cssText =
       'position:fixed;inset:0;background:rgba(15,23,42,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
-    overlay.innerHTML = `<div style="background:white;border-radius:14px;max-width:440px;width:100%;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
+    overlay.innerHTML = `<div style="background:white;border-radius:14px;max-width:520px;width:100%;max-height:min(92vh,900px);overflow-y:auto;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
       <h2 style="font-size:18px;margin-bottom:6px;color:#0f172a;">Airtable connection</h2>
       <p style="font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.5;">Values are stored only in this browser (localStorage). For a public GitHub repo, do not commit tokens in <code>config.js</code>.</p>
       <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Personal Access Token</label>
@@ -438,19 +438,19 @@
       <input id="setup-table" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" />
       <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">View (optional)</label>
       <input id="setup-view" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" />
-      <details style="margin-bottom:14px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
-        <summary style="font-weight:600;cursor:pointer;font-size:13px;color:#334155;">Airtable column names (if you see “Untitled”, “Status TBD”, or one “unknown” org)</summary>
-        <p style="font-size:11px;color:#64748b;margin:10px 0 8px;line-height:1.45;">Each value must match a <strong>column name</strong> in your Airtable table exactly (same spelling and spaces as the grid header).</p>
-        <div style="display:grid;gap:8px;margin-top:8px;">
-          <label style="font-size:11px;font-weight:600;color:#475569;">Title / name <input id="setup-f-name" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
-          <label style="font-size:11px;font-weight:600;color:#475569;">Description <input id="setup-f-description" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
-          <label style="font-size:11px;font-weight:600;color:#475569;">Status <input id="setup-f-status" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
-          <label style="font-size:11px;font-weight:600;color:#475569;">Priority <input id="setup-f-priority" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
-          <label style="font-size:11px;font-weight:600;color:#475569;">Impact <input id="setup-f-impact" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
-          <label style="font-size:11px;font-weight:600;color:#475569;">Org / team <input id="setup-f-org" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
-          <label style="font-size:11px;font-weight:600;color:#475569;">“New” flag (checkbox) <input id="setup-f-isNew" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+      <div style="margin-bottom:14px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+        <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px;">Airtable column names</h3>
+        <p style="font-size:11px;color:#64748b;margin:0 0 10px;line-height:1.45;">If cards show <strong>Untitled</strong> or <strong>Status TBD</strong>, type each <strong>grid header</strong> from your Airtable table exactly (spelling and spaces). Leave a row blank to use the default name in parentheses.</p>
+        <div style="display:grid;gap:8px;">
+          <label style="font-size:11px;font-weight:600;color:#475569;">Title / name <span style="font-weight:400;color:#94a3b8">(default: Name)</span><input id="setup-f-name" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Description <span style="font-weight:400;color:#94a3b8">(Description)</span><input id="setup-f-description" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Status <span style="font-weight:400;color:#94a3b8">(Status)</span><input id="setup-f-status" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Priority <span style="font-weight:400;color:#94a3b8">(Priority)</span><input id="setup-f-priority" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Impact <span style="font-weight:400;color:#94a3b8">(Impact)</span><input id="setup-f-impact" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">Org / team <span style="font-weight:400;color:#94a3b8">(Org)</span><input id="setup-f-org" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
+          <label style="font-size:11px;font-weight:600;color:#475569;">New flag (checkbox) <span style="font-weight:400;color:#94a3b8">(New)</span><input id="setup-f-isNew" type="text" class="setup-f-in" style="width:100%;margin-top:2px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" /></label>
         </div>
-      </details>
+      </div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;">
         <button type="button" id="setup-clear" class="reset-btn" style="font-size:12px;">Clear saved connection…</button>
         <div style="display:flex;gap:10px;">
