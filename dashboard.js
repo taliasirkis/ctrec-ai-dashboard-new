@@ -39,6 +39,19 @@
     Object.assign(window.DASHBOARD_CONFIG || {}, next);
   }
 
+  /** Base / table / view only — never put PAT in the DOM. */
+  function fillSetupFormNonSecret() {
+    const c = loadMergedConfig();
+    const baseEl = document.getElementById('setup-base');
+    const tableEl = document.getElementById('setup-table');
+    const viewEl = document.getElementById('setup-view');
+    const patEl = document.getElementById('setup-pat');
+    if (baseEl) baseEl.value = c.baseId || '';
+    if (tableEl) tableEl.value = c.tableName || '';
+    if (viewEl) viewEl.value = c.viewName || '';
+    if (patEl) patEl.value = '';
+  }
+
   function cellValue(record, fieldName) {
     if (!fieldName || !record.fields) return '';
     const v = record.fields[fieldName];
@@ -332,7 +345,6 @@
 
   function injectSetupModal() {
     if (document.getElementById('setup-overlay')) return;
-    const cfg = loadMergedConfig();
     const overlay = document.createElement('div');
     overlay.id = 'setup-overlay';
     overlay.className = 'hidden';
@@ -342,7 +354,8 @@
       <h2 style="font-size:18px;margin-bottom:6px;color:#0f172a;">Airtable connection</h2>
       <p style="font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.5;">Values are stored only in this browser (localStorage). For a public GitHub repo, do not commit tokens in <code>config.js</code>.</p>
       <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Personal Access Token</label>
-      <input id="setup-pat" type="password" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" placeholder="pat..." autocomplete="off" />
+      <p style="font-size:11px;color:#64748b;margin:-4px 0 6px;line-height:1.4;">Paste a token only when adding or changing it. Leave blank and save to keep your existing token (e.g. when updating base or table only).</p>
+      <input id="setup-pat" type="password" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" placeholder="pat… (optional if already saved)" autocomplete="off" />
       <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Base ID</label>
       <input id="setup-base" type="text" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px;" placeholder="appXXXXXXXXXXXXXX" />
       <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Table name</label>
@@ -355,15 +368,13 @@
       </div>
     </div>`;
     document.body.appendChild(overlay);
-    document.getElementById('setup-pat').value = cfg.airtablePat || '';
-    document.getElementById('setup-base').value = cfg.baseId || '';
-    document.getElementById('setup-table').value = cfg.tableName || '';
-    document.getElementById('setup-view').value = cfg.viewName || '';
+    fillSetupFormNonSecret();
 
     function close() {
       overlay.classList.add('hidden');
     }
     function open() {
+      fillSetupFormNonSecret();
       overlay.classList.remove('hidden');
     }
     overlay.addEventListener('click', (e) => {
@@ -371,12 +382,14 @@
     });
     document.getElementById('setup-cancel').addEventListener('click', close);
     document.getElementById('setup-save').addEventListener('click', () => {
-      saveLocalConfig({
-        airtablePat: document.getElementById('setup-pat').value.trim(),
+      const pat = document.getElementById('setup-pat').value.trim();
+      const patch = {
         baseId: document.getElementById('setup-base').value.trim(),
         tableName: document.getElementById('setup-table').value.trim() || 'Initiatives',
         viewName: document.getElementById('setup-view').value.trim(),
-      });
+      };
+      if (pat) patch.airtablePat = pat;
+      saveLocalConfig(patch);
       close();
       ensureRefreshTimer();
       refresh();
