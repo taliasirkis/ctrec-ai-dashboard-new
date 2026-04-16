@@ -8,6 +8,11 @@
 window.DASHBOARD_CONFIG = {
   airtablePat: '',
   baseId: '',
+  /**
+   * true = always use airtablePat/baseId/table/view/Q4 settings from this file (ignore localStorage for those).
+   * Lets all visitors see the same data without Setup. Token in a public repo = public read access; use read-only PAT.
+   */
+  siteWideConnection: false,
   tableName: 'Initiatives',
   viewName: '',
   /** When true, only rows where quarterField contains "Q4" are fetched (unless recordFilterFormula is set). */

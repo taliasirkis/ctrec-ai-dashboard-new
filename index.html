@@ -429,6 +429,11 @@ window.DASHBOARD_CONFIG = Object.assign(
   {
     airtablePat: '',
     baseId: '',
+    /**
+     * Set true and fill airtablePat + baseId here (or in config.js) so every visitor loads the same data
+     * without opening Setup. Use a read-only PAT scoped only to this base; anything in public HTML can be copied.
+     */
+    siteWideConnection: false,
     tableName: 'Initiatives',
     viewName: '',
     /** Airtable filterByFormula so only Q4 rows load (field must contain "Q4"). Turn off in Setup if your grid has no quarter column. */
@@ -463,7 +468,7 @@ window.DASHBOARD_CONFIG = Object.assign(
 );
 </script>
 <script src="config.js"></script>
-<script src="dashboard.js?v=25"></script>
+<script src="dashboard.js?v=26"></script>
 
 </body>
 </html>

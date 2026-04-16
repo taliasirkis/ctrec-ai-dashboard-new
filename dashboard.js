@@ -39,6 +39,12 @@
         quarterField: 'Quarter',
         /** If set, sent as filterByFormula and overrides q4Only. */
         recordFilterFormula: '',
+        /**
+         * When true, Airtable connection + table scope always come from this page / config.js
+         * (not from localStorage), so every visitor loads the same data without Setup.
+         * Use only with a read-only PAT scoped to this base — tokens in public HTML are extractable.
+         */
+        siteWideConnection: false,
       },
       window.DASHBOARD_CONFIG || {}
     );
@@ -50,6 +56,16 @@
     } catch {
       merged = base;
       saved = {};
+    }
+    merged.siteWideConnection = base.siteWideConnection === true;
+    if (merged.siteWideConnection) {
+      merged.airtablePat = normalizeToken(base.airtablePat);
+      merged.baseId = String(base.baseId || '').trim();
+      merged.tableName = String(base.tableName || '').trim() || 'Initiatives';
+      merged.viewName = String(base.viewName || '').trim();
+      merged.q4Only = base.q4Only !== false;
+      merged.quarterField = String(base.quarterField || 'Quarter').trim() || 'Quarter';
+      merged.recordFilterFormula = String(base.recordFilterFormula || '').trim();
     }
     merged.fields = Object.assign({}, DEFAULT_FIELDS, base.fields || {}, saved.fields || {});
     merged.orgSlugMap = Object.assign({}, base.orgSlugMap || {}, saved.orgSlugMap || {});
@@ -100,6 +116,19 @@
   }
   window.__clearDashboardConnection = clearStoredConnectionAndReload;
 
+  function setSetupConnectionFieldsDisabled(siteWide) {
+    ['setup-base', 'setup-table', 'setup-view', 'setup-pat', 'setup-q4-only', 'setup-quarter-field', 'setup-record-filter-formula'].forEach(
+      (id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = !!siteWide;
+        el.style.opacity = siteWide ? '0.7' : '';
+      }
+    );
+    const ban = document.getElementById('setup-site-wide-banner');
+    if (ban) ban.classList.toggle('hidden', !siteWide);
+  }
+
   /** Base / table / view only — never put PAT in the DOM. */
   function fillSetupFormNonSecret() {
     const c = loadMergedConfig();
@@ -129,6 +158,7 @@
     setF('setup-f-impact', 'impact');
     setF('setup-f-org', 'org');
     setF('setup-f-isNew', 'isNew');
+    setSetupConnectionFieldsDisabled(c.siteWideConnection);
   }
 
   /** Flatten Airtable cell values to a display string (selects, lookups, arrays, etc.). */
@@ -1138,6 +1168,7 @@
       'position:fixed;inset:0;background:rgba(15,23,42,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
     overlay.innerHTML = `<div class="setup-card-doc" style="background:#fafafa;border:1px solid #d0d7de;border-radius:10px;max-width:520px;width:100%;max-height:min(92vh,900px);overflow-y:auto;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.2);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">
       <h2 style="font-size:14px;margin-bottom:4px;color:#24292f;font-weight:700;letter-spacing:0.02em;"># Airtable connection</h2>
+      <p id="setup-site-wide-banner" class="hidden" style="margin:-4px 0 12px;padding:10px 12px;background:#e0f2fe;border:1px solid #38bdf8;border-radius:8px;font-size:12px;color:#0c4a6e;line-height:1.45;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">This site uses a <strong>shared</strong> Airtable connection from the page config. Base, table, view, and Q4 row filter are fixed here; only column mapping below can be saved per browser.</p>
       <p class="setup-note" style="margin-bottom:14px;"># Values are stored only in this browser (localStorage). For a public GitHub repo, do not commit tokens in config.js</p>
       <label style="display:block;font-size:11px;font-weight:700;color:#24292f;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Personal Access Token</label>
       <p class="setup-note" style="margin:-2px 0 6px;"># Plain text field — paste full pat… secret. Leave blank + save to keep existing token when editing base/table only.</p>
@@ -1265,16 +1296,19 @@
       }
     });
     document.getElementById('setup-save').addEventListener('click', () => {
+      const siteWide = loadMergedConfig().siteWideConnection === true;
       const pat = normalizeToken(document.getElementById('setup-pat').value);
-      const patch = {
-        baseId: document.getElementById('setup-base').value.trim(),
-        tableName: document.getElementById('setup-table').value.trim() || 'Initiatives',
-        viewName: document.getElementById('setup-view').value.trim(),
-        q4Only: document.getElementById('setup-q4-only').checked,
-        quarterField: document.getElementById('setup-quarter-field').value.trim() || 'Quarter',
-        recordFilterFormula: document.getElementById('setup-record-filter-formula').value.trim(),
-      };
-      if (pat) {
+      const patch = siteWide
+        ? {}
+        : {
+            baseId: document.getElementById('setup-base').value.trim(),
+            tableName: document.getElementById('setup-table').value.trim() || 'Initiatives',
+            viewName: document.getElementById('setup-view').value.trim(),
+            q4Only: document.getElementById('setup-q4-only').checked,
+            quarterField: document.getElementById('setup-quarter-field').value.trim() || 'Quarter',
+            recordFilterFormula: document.getElementById('setup-record-filter-formula').value.trim(),
+          };
+      if (!siteWide && pat) {
         if (pat.length < 30) {
           if (
             !window.confirm(
